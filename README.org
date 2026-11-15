@@ -1,0 +1,13 @@
+* ef - extra functions (for C)
+** components
+- ✅ short numerics (=i8=, =f32=, …)
+- ✅ logging system (=ef_log=, =ef_die=)
+- ✅ conditional breakpoint (=ef_breakpoint=)
+- dynamic arrays (=EF_List=)
+- hash tables (fnv1a, sip, …?) (=EF_Hash=)
+- go-style flags (w/ usage gen?) (=EF_Flag=)
+- multi arena allocator (=EF_Arena=)
+- object pools (=EF_Pool=)
+- HUGE IF ucontext coroutines? (=EF_Coro=)
+- defer (gcc exts, clang fblocks) (=ef_defer=)
+- string builder & view (=EF_SB/EF_SV=)
