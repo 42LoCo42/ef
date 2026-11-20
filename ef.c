@@ -31,6 +31,26 @@ typedef double f64;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** Helper for a single optional macro argument
+Call this as ef_pick##__VA_OPT__(1)(<default value>, __VA_ARGS__)
+to return either the first vararg or <default value>.
+*/
+
+#define ef_pick(x, _) x
+#define ef_pick1(_, x) x
+
+////////////////////////////////////////////////////////////////////////////////
+
+/** Environment variable helper
+ef_env returns the value of the requested environment variable if it is set to a
+non-empty string, otherwise it returns the optional second parameter or NULL.
+*/
+
+#define ef_env(name, ...) _ef_env(name, ef_pick##__VA_OPT__(1)(NULL, __VA_ARGS__))
+char* _ef_env(const char* name, char* val);
+
+////////////////////////////////////////////////////////////////////////////////
+
 /** Logging system
 In most circumstances, just call ef_<level>(fmt, ...).
 Additionally, ef_log(EF_LL_<LEVEL>, fmt, ...) is provided
@@ -129,8 +149,8 @@ void ef_breakpoint(void);
 #include <strings.h>
 #include <sys/types.h>
 
-static EF_LogLevel minLevel   = EF_LL_INFO;
-static const char* logTimeFmt = "%F %T";
+static EF_LogLevel logLevel = EF_LL_INFO;
+static char*       logTimeFmt;
 
 static void printValidLogLevels(void);
 
@@ -144,25 +164,25 @@ static void __attribute__((constructor)) init(void) {
 
 	////////////////////////////////////////
 
-	const char* logLevel = getenv("EF_LOG");
-	if(logLevel != NULL && strlen(logLevel) > 0) {
-#define X(x, _)                              \
-	else if(strcasecmp(logLevel, #x) == 0) { \
-		minLevel = EF_LL_##x;                \
+	const char* logLevelS = ef_env("EF_LOG");
+	if(logLevelS != NULL) {
+#define X(x, _)                               \
+	else if(strcasecmp(logLevelS, #x) == 0) { \
+		logLevel = EF_LL_##x;                 \
 	}
-		if(strcmp(logLevel, "-1") == 0 ||
-		   strcmp(logLevel, "false") == 0 ||
-		   strcmp(logLevel, "no") == 0) {
-			minLevel = EF_LL_Count;
+		if(strcmp(logLevelS, "-1") == 0 ||
+		   strcmp(logLevelS, "false") == 0 ||
+		   strcmp(logLevelS, "no") == 0) {
+			logLevel = EF_LL_Count;
 		}
 		EF_LOGLEVELS
 		else {
 			char*       end   = NULL;
-			EF_LogLevel level = strtol(logLevel, &end, 10);
+			EF_LogLevel level = strtol(logLevelS, &end, 10);
 			if(*end == 0 && level < EF_LL_Count) {
-				minLevel = level;
+				logLevel = level;
 			} else {
-				ef_fail("invalid log level '%s'", logLevel);
+				ef_fail("invalid log level '%s'", logLevelS);
 				printValidLogLevels();
 				exit(1);
 			}
@@ -170,10 +190,7 @@ static void __attribute__((constructor)) init(void) {
 #undef X
 	}
 
-	const char* timeFmt = getenv("EF_LOG_TS");
-	if(timeFmt != NULL && strlen(timeFmt) > 0) {
-		logTimeFmt = timeFmt;
-	}
+	logTimeFmt = ef_env("EF_LOG_TS", "%F %T");
 
 	////////////////////////////////////////
 
@@ -202,11 +219,18 @@ static void __attribute__((constructor)) init(void) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+char* _ef_env(const char* name, char* val) {
+	char* var = getenv(name);
+	return (!var || strlen(var) == 0) ? val : var;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #include <stdarg.h>
 #include <time.h>
 
 void _ef_log(EF_LogLevel level, const char* fmt, ...) {
-	if(level < minLevel) return;
+	if(level < logLevel) return;
 
 	va_list va;
 	va_start(va, fmt);

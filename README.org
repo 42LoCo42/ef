@@ -1,6 +1,7 @@
 * ef - extra functions (for C)
 ** components
 - ✅ short numerics (=i8=, =f32=, …)
+- ✅ environment variable helper (=ef_env=)
 - ✅ logging system (=ef_log=, =ef_die=)
 - ✅ conditional breakpoint (=ef_breakpoint=)
 - dynamic arrays (=EF_List=)
