@@ -1,5 +1,28 @@
 #pragma once
 
+/** ef - extra functions (for C)
+This is a header-only, single-file support library for C
+which includes many useful utility functions and data structures.
+
+You can use it in your project in two different ways:
+
+1. Copy it into your codebase and compile it together with your other source files
+
+2. Include it from anywhere (e.g. your system's standard include path)
+   and define EF_IMPLEMENTATION in front of a *single* inclusion site
+   (users of STB-style libraries will be familiar with this scheme)
+
+Modules included in this version of ef:
+- Short numerics (int -> i32 etc.)
+- Environment variable helper (ef_env)
+- Logging system (ef_log)
+- Log-and-abort (ef_die)
+- Conditional breakpoints (ef_breakpoint)
+
+This software is released into the public domain.
+For more information, see the end of this file.
+*/
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Short numerics
@@ -100,7 +123,7 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** "Death" aka log-and-abort
+/** Log-and-abort
 Both ef_die and ef_diex forward their args to ef_fail.
 ef_die additionally appends the message and symbol corresponding to
 the current errno.
@@ -298,3 +321,30 @@ void ef_breakpoint(void) {
 #endif
 
 #endif
+
+/**
+This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <https://unlicense.org>
+*/
