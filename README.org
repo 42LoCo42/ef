@@ -1,9 +1,27 @@
 * ef - extra functions (for C)
-** components
-- ✅ short numerics (=i8=, =f32=, …)
-- ✅ environment variable helper (=ef_env=)
-- ✅ logging system (=ef_log=, =ef_die=)
-- ✅ conditional breakpoint (=ef_breakpoint=)
+This is a header-only, single-file support library for C
+which includes many useful utility functions and data structures.
+
+You can use it in your project in two different ways:
+
+1. Copy it into your codebase and compile it together with your other source files
+
+2. Include it from anywhere (e.g. your system's standard include path)
+   and define =EF_IMPLEMENTATION= in front of a *single* inclusion site
+   (users of STB-style libraries will be familiar with this scheme)
+
+This software is released into the public domain.
+For more information, see the [[file:LICENSE][license]].
+
+** Implemented modules
+- Short numerics (=int= → =i32= etc.)
+- Environment variable helper (=ef_env=)
+- Logging system (=ef_log=)
+- Log-and-abort (=ef_die=)
+- Conditional breakpoints (=ef_breakpoint=)
+- Deferred cleanup (=ef_free= etc.)
+
+** Planned modules
 - dynamic arrays (=EF_List=)
 - hash tables (fnv1a, sip, …?) (=EF_Hash=)
 - go-style flags (w/ usage gen?) (=EF_Flag=)

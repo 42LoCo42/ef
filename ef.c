@@ -18,6 +18,7 @@ Modules included in this version of ef:
 - Logging system (ef_log)
 - Log-and-abort (ef_die)
 - Conditional breakpoints (ef_breakpoint)
+- Deferred cleanup (ef_free etc.)
 
 This software is released into the public domain.
 For more information, see the end of this file.
@@ -172,6 +173,24 @@ void ef_breakpoint(void);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** Deferred cleanup
+These macros, when used as variable declaration modifiers, mark the variable
+for automatic cleanup once the scope in which it was declared is exited.
+*/
+
+#include <stdio.h>
+
+#define ef_free __attribute__((cleanup(_ef_free)))
+void _ef_free(void** arg);
+
+#define ef_close __attribute__((cleanup(_ef_close)))
+void _ef_close(int* arg);
+
+#define ef_fclose __attribute__((cleanup(_ef_fclose)))
+void _ef_fclose(FILE** arg);
+
+////////////////////////////////////////////////////////////////////////////////
+
 #if __INCLUDE_LEVEL__ == 0 || defined(EF_IMPLEMENTATION) ///////////////////////
 
 #include <linux/limits.h>
@@ -319,6 +338,22 @@ void ef_breakpoint(void) {
 	if(inDebugger) __asm__("int3");
 }
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+
+#include <unistd.h>
+
+void _ef_free(void** arg) {
+	free(*arg);
+}
+
+void _ef_close(int* arg) {
+	close(*((int*) arg));
+}
+
+void _ef_fclose(FILE** arg) {
+	fclose(*arg);
+}
 
 #endif
 
