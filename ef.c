@@ -32,20 +32,24 @@ typedef double f64;
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Logging system
-Call either ef_log(LL_<LEVEL>, fmt, ...) or ef_<level>(fmt, ...)
-
-Every log line has the format
-[LEVEL] [YYYY-MM-DD hh:mm:ss] file:line: func: <fmt...>
+In most circumstances, just call ef_<level>(fmt, ...).
+Additionally, ef_log(EF_LL_<LEVEL>, fmt, ...) is provided
+if you need to define the log level programmatically.
 
 Available log levels are:
-- 'note' (for debug messages)
-- 'info' (for success; this is the default log level)
-- 'warn' (for non-critical failure)
-- 'fail' (for critical failure; also used by ef_die)
+- 'note' (level 0; for debug messages)
+- 'info' (level 1; for success; this is the default log level)
+- 'warn' (level 2; for non-critical failure)
+- 'fail' (level 3; for critical failure; also used by ef_die)
 
 The minimum log level can be controlled by setting the environment variable
-EF_LOGLEVEL to a (case-insensitive) name of a log level, its corresponding
-numeric value or one of -1, 'false' or 'no' to disable logging entirely.
+EF_LOG to a (case-insensitive) name of a log level, its corresponding numeric
+value or one of -1, 'false' or 'no' to disable logging entirely.
+
+Every log line has the format:
+[LEVEL] [YYYY-MM-DD hh:mm:ss] file:line: func: <fmt...>
+The timestamp can be changed by setting the environment variable EF_LOG_TS
+to a valid format string as defined by strftime(3).
 */
 
 #define EF_LOGLEVELS \
@@ -55,9 +59,9 @@ numeric value or one of -1, 'false' or 'no' to disable logging entirely.
 	X(FAIL, 31)
 
 typedef enum {
-#define X(x, _) LL_##x,
+#define X(x, _) EF_LL_##x,
 	EF_LOGLEVELS
-		LL_Count,
+		EF_LL_Count,
 #undef X
 } EF_LogLevel;
 
@@ -67,10 +71,10 @@ typedef enum {
 	__func__ __VA_OPT__(, ) __VA_ARGS__            \
 )
 
-#define ef_note(...) ef_log(LL_NOTE, __VA_ARGS__)
-#define ef_info(...) ef_log(LL_INFO, __VA_ARGS__)
-#define ef_warn(...) ef_log(LL_WARN, __VA_ARGS__)
-#define ef_fail(...) ef_log(LL_FAIL, __VA_ARGS__)
+#define ef_note(...) ef_log(EF_LL_NOTE, __VA_ARGS__)
+#define ef_info(...) ef_log(EF_LL_INFO, __VA_ARGS__)
+#define ef_warn(...) ef_log(EF_LL_WARN, __VA_ARGS__)
+#define ef_fail(...) ef_log(EF_LL_FAIL, __VA_ARGS__)
 
 void _ef_log(EF_LogLevel level, const char* fmt, ...);
 
@@ -125,7 +129,8 @@ void ef_breakpoint(void);
 #include <strings.h>
 #include <sys/types.h>
 
-static EF_LogLevel minLevel = LL_INFO;
+static EF_LogLevel minLevel   = EF_LL_INFO;
+static const char* logTimeFmt = "%F %T";
 
 static void printValidLogLevels(void);
 
@@ -139,22 +144,22 @@ static void __attribute__((constructor)) init(void) {
 
 	////////////////////////////////////////
 
-	const char* logLevel = getenv("EF_LOGLEVEL");
+	const char* logLevel = getenv("EF_LOG");
 	if(logLevel != NULL && strlen(logLevel) > 0) {
 #define X(x, _)                              \
 	else if(strcasecmp(logLevel, #x) == 0) { \
-		minLevel = LL_##x;                   \
+		minLevel = EF_LL_##x;                \
 	}
 		if(strcmp(logLevel, "-1") == 0 ||
 		   strcmp(logLevel, "false") == 0 ||
 		   strcmp(logLevel, "no") == 0) {
-			minLevel = LL_Count;
+			minLevel = EF_LL_Count;
 		}
 		EF_LOGLEVELS
 		else {
 			char*       end   = NULL;
 			EF_LogLevel level = strtol(logLevel, &end, 10);
-			if(*end == 0 && level < LL_Count) {
+			if(*end == 0 && level < EF_LL_Count) {
 				minLevel = level;
 			} else {
 				ef_fail("invalid log level '%s'", logLevel);
@@ -163,6 +168,11 @@ static void __attribute__((constructor)) init(void) {
 			}
 		}
 #undef X
+	}
+
+	const char* timeFmt = getenv("EF_LOG_TS");
+	if(timeFmt != NULL && strlen(timeFmt) > 0) {
+		logTimeFmt = timeFmt;
 	}
 
 	////////////////////////////////////////
@@ -203,12 +213,12 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...) {
 
 	char   buf[256] = {0};
 	time_t now      = time(NULL);
-	strftime(buf, sizeof(buf), "%F %T", localtime(&now));
+	strftime(buf, sizeof(buf), logTimeFmt, localtime(&now));
 
 	const char* levelStr = NULL;
 	switch(level) {
 #define X(x, c)                     \
-	case LL_##x:                    \
+	case EF_LL_##x:                 \
 		levelStr = "[" #c "m[" #x; \
 		break;
 		EF_LOGLEVELS
@@ -222,7 +232,7 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...) {
 
 static void printValidLogLevels(void) {
 	fprintf(stderr, "Valid log levels are:\n");
-#define X(x, c) fprintf(stderr, "  [%dm%s[m (%d)\n", c, #x, LL_##x);
+#define X(x, c) fprintf(stderr, "  [%dm%s[m (%d)\n", c, #x, EF_LL_##x);
 	EF_LOGLEVELS
 #undef X
 	fprintf(stderr, "Or specify -1, 'false' or 'no' to disable logging\n");
