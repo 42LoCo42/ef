@@ -9,6 +9,8 @@ project(
 	},
 )
 
+isClang = meson.get_compiler('c').get_id() == 'clang'
+
 executable(
 	'example',
 	sources: [
@@ -21,8 +23,8 @@ executable(
 		'-DVERSION="@0@"'.format(meson.project_version()),
 		'-Wno-empty-translation-unit',
 		'-Wno-pragma-once-outside-header',
-	],
-	link_args: [],
+	] + (isClang ? ['-fblocks'] : []),
+	link_args: (isClang ? ['-lBlocksRuntime'] : []),
 	dependencies: [],
 	install: true,
 )

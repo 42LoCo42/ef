@@ -3,16 +3,27 @@
 #define EF_IMPLEMENTATION
 #include "../ef.c"
 
+#include <fcntl.h>
+
 int main(void) {
 	ef_breakpoint();
 
-	ef_note("hi from %d", 6 * 7);
-	ef_info("hi from %d", 6 * 7);
-	ef_warn("hi from %d", 6 * 7);
-	ef_fail("hi from %d", 6 * 7);
+	ef_defer(printf("defer called\n"));
 
-	while(true) {
-		ef_info("bla");
-		sleep(1);
+	bool foo = true;
+	ef_defer_if(
+		foo,
+		printf("defer_if called\n");
+		printf("foo = %d\n", foo);
+	);
+
+	for(size_t i = 0; i < 10; i++) {
+		ef_free void* mem = malloc(1024);
+
+		ef_close int fd = creat("foo", 0644);
+		if(fd < 0) ef_die("failed to open foo");
+
+		ef_fclose FILE* file = fopen("foo", "w");
+		if(!file) ef_die("failed to open foo");
 	}
 }

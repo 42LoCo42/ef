@@ -14,12 +14,13 @@ This software is released into the public domain.
 For more information, see the [[file:LICENSE][license]].
 
 ** Implemented modules
-- Short numerics (=int= → =i32= etc.)
+- Short numerics (=int= → =i32=, …)
 - Environment variable helper (=ef_env=)
-- Logging system (=ef_log=)
-- Log-and-abort (=ef_die=)
+- Logging system (=ef_log=, =ef_<level>=)
+- Log-and-abort (=ef_die=, =ef_diex=)
 - Conditional breakpoints (=ef_breakpoint=)
-- Deferred cleanup (=ef_free= etc.)
+- Deferred cleanup (=ef_free=, …)
+- Block defer (=ef_defer=, =ef_defer_if=)
 
 ** Planned modules
 - dynamic arrays (=EF_List=)
@@ -28,5 +29,4 @@ For more information, see the [[file:LICENSE][license]].
 - multi arena allocator (=EF_Arena=)
 - object pools (=EF_Pool=)
 - HUGE IF ucontext coroutines? (=EF_Coro=)
-- defer (gcc exts, clang fblocks) (=ef_defer=)
 - string builder & view (=EF_SB/EF_SV=)

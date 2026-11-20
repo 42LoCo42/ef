@@ -1,4 +1,5 @@
-/.cache
-/.direnv
-/.env
-/result
+.cache
+.direnv
+.env
+foo
+result

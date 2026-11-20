@@ -4,7 +4,7 @@
       let
         pkgs = import nixpkgs { inherit system; };
         inherit (pkgs.lib.fileset) toSource unions;
-        stdenv = pkgs.gccStdenv; # pkgs.clangStdenv;
+        stdenv = pkgs.clangStdenv;
       in
       rec {
         packages.default = stdenv.mkDerivation {
@@ -21,12 +21,14 @@
           };
 
           nativeBuildInputs = with pkgs; [
+            gcc
             meson
             ninja
             pkg-config
           ];
 
           buildInputs = with pkgs; [
+            libblocksruntime
           ];
 
           preConfigure = ''

@@ -13,12 +13,13 @@ You can use it in your project in two different ways:
    (users of STB-style libraries will be familiar with this scheme)
 
 Modules included in this version of ef:
-- Short numerics (int -> i32 etc.)
+- Short numerics (int -> i32, …)
 - Environment variable helper (ef_env)
-- Logging system (ef_log)
-- Log-and-abort (ef_die)
+- Logging system (ef_log, ef_<level>)
+- Log-and-abort (ef_die, ef_diex)
 - Conditional breakpoints (ef_breakpoint)
-- Deferred cleanup (ef_free etc.)
+- Deferred cleanup (ef_free, …)
+- Block defer (ef_defer, ef_defer_if)
 
 This software is released into the public domain.
 For more information, see the end of this file.
@@ -55,6 +56,13 @@ typedef double f64;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** Helper for macro symbol concatenation */
+
+#define ef_concat(a, b) ef_concat1(a, b)
+#define ef_concat1(a, b) a##b
+
+////////////////////////////////////////////////////////////////////////////////
+
 /** Helper for a single optional macro argument
 Call this as ef_pick##__VA_OPT__(1)(<default value>, __VA_ARGS__)
 to return either the first vararg or <default value>.
@@ -68,6 +76,10 @@ to return either the first vararg or <default value>.
 /** Environment variable helper
 ef_env returns the value of the requested environment variable if it is set to a
 non-empty string, otherwise it returns the optional second parameter or NULL.
+
+Examples:
+..char* user = ef_env("USER");
+..char* home = ef_env("HOME", "/homeless-shelter");
 */
 
 #define ef_env(name, ...) _ef_env(name, ef_pick##__VA_OPT__(1)(NULL, __VA_ARGS__))
@@ -94,6 +106,10 @@ Every log line has the format:
 [LEVEL] [YYYY-MM-DD hh:mm:ss] file:line: func: <fmt...>
 The timestamp can be changed by setting the environment variable EF_LOG_TS
 to a valid format string as defined by strftime(3).
+
+Examples:
+  ef_info("the answer is %d", 6 * 7);
+  ef_log(EF_LL_FAIL, "oh no!");
 */
 
 #define EF_LOGLEVELS \
@@ -128,6 +144,14 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...);
 Both ef_die and ef_diex forward their args to ef_fail.
 ef_die additionally appends the message and symbol corresponding to
 the current errno.
+
+Examples:
+  // appends current errno, e.g. "No such file or directory (ENOENT)"
+  int fd = open("foo", O_RDONLY);
+  if(fd < 0) ef_die("failed to open foo");
+
+  // doesn't append current error
+  if(!someCondition()) ef_diex("something bad happened");
 */
 
 #include <errno.h>
@@ -155,13 +179,16 @@ the current errno.
 /** Conditional breakpoints
 ef_breakpoint will emit a debug trap (interrupt 3 aka SIGTRAP)
 if and only if all of the following conditions hold:
+
 - The program is built in debug mode (NDEBUG is not defined)
+
 - It is being executed by a debugger/tracer (/proc/self/status: TracerPid != 0)
+
 - The debugger is not listed in the environment variable EF_BREAKPOINT_IGNORE,
   which is a comma-separated list of command names according to
-proc_pid_comm(5). By default, strace is ignored.
+  proc_pid_comm(5). By default, strace is ignored.
 
-If the program is built in release mode, all calls to ef_breakpoint()
+If the program is built in release mode, all calls to ef_breakpoint
 and its supporting logic will be a no-op (introduce no extra code).
 */
 
@@ -176,6 +203,11 @@ void ef_breakpoint(void);
 /** Deferred cleanup
 These macros, when used as variable declaration modifiers, mark the variable
 for automatic cleanup once the scope in which it was declared is exited.
+
+Examples:
+  ef_free void* mem = malloc(1024);
+  ef_close int fd = open("foo", O_RDONLY);
+  ef_fclose FILE* file = fopen("foo", "r");
 */
 
 #include <stdio.h>
@@ -188,6 +220,57 @@ void _ef_close(int* arg);
 
 #define ef_fclose __attribute__((cleanup(_ef_fclose)))
 void _ef_fclose(FILE** arg);
+
+////////////////////////////////////////////////////////////////////////////////
+
+/** Block defer
+Pass statements to ef_defer to execute them once the current scope is exited.
+Seperate defers execute in reverse registration order, so last-to-first.
+They can also capture variables in their scope.
+
+For a conditional defer, use ef_defer_if.
+Note that the condition is checked once the defer actually runs,
+not when it is being registered.
+
+When compiling with clang, this module requires the compiler flags
+'-fblocks' and '-lBlocksRuntime' to be passed.
+Alternatively, define EF_NO_DEFER if you don't want to use defer.
+
+Examples:
+  ef_defer(puts("exiting..."));
+
+  ef_defer_if(
+    someCondition(),
+    puts("conditional logic...");
+    puts("multiple statements work!");
+  );
+*/
+
+#ifndef EF_NO_DEFER
+#ifdef __GNUC__
+#ifdef __clang__
+#define EF_CALL_DEFER
+void ef_call_defer(void (^*blk)(void));
+
+#define ef_defer(...)                                                            \
+	__attribute__((cleanup(ef_call_defer))) void (^ef_concat(deferf, __LINE__))( \
+		void                                                                     \
+	) = ^{                                                                       \
+	  __VA_ARGS__;                                                               \
+	}
+#else
+#define ef_defer(...)                                       \
+	__extension__ void ef_concat(deferf, __LINE__)(void*) { \
+		__VA_ARGS__;                                        \
+	}                                                       \
+	__attribute__((cleanup(ef_concat(deferf, __LINE__)))) char ef_concat(deferi, __LINE__)
+#endif // __clang__
+
+#define ef_defer_if(cond, ...) ef_defer(if(!cond) return; __VA_ARGS__)
+#else
+#error "ef_defer: unsupported compiler; need gcc or clang!"
+#endif // __GNUC__
+#endif // !EF_NO_DEFER
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -355,7 +438,15 @@ void _ef_fclose(FILE** arg) {
 	fclose(*arg);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+#ifdef EF_CALL_DEFER
+void ef_call_defer(void (^*blk)(void)) {
+	(*blk)();
+}
 #endif
+
+#endif // __INCLUDE_LEVEL__/EF_IMPLEMENTATION guard
 
 /**
 This is free and unencumbered software released into the public domain.
