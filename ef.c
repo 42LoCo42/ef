@@ -130,8 +130,15 @@ the current errno.
 
 /** Conditional breakpoints
 ef_breakpoint will emit a debug trap (interrupt 3 aka SIGTRAP)
-if and only if the program is built in debug mode (NDEBUG not defined)
-and executed by a debugger (/proc/self/status: TracerPid != 0).
+if and only if all of the following conditions hold:
+- The program is built in debug mode (NDEBUG is not defined)
+- It is being executed by a debugger/tracer (/proc/self/status: TracerPid != 0)
+- The debugger is not listed in the environment variable EF_BREAKPOINT_IGNORE,
+  which is a comma-separated list of command names according to
+proc_pid_comm(5). By default, strace is ignored.
+
+If the program is built in release mode, all calls to ef_breakpoint()
+and its supporting logic will be a no-op (introduce no extra code).
 */
 
 #ifdef NDEBUG
@@ -144,6 +151,7 @@ void ef_breakpoint(void);
 
 #if __INCLUDE_LEVEL__ == 0 || defined(EF_IMPLEMENTATION) ///////////////////////
 
+#include <linux/limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
@@ -207,7 +215,26 @@ static void __attribute__((constructor)) init(void) {
 	while((len = getline(&line, &cap, statusFile)) != -1) {
 		pid_t pid = 0;
 		if(sscanf(line, "TracerPid: %d", &pid) > 0 && pid != 0) {
+			char commPath[PATH_MAX] = {0};
+			snprintf(commPath, sizeof(commPath), "/proc/%d/comm", pid);
+
+			FILE* commFile = fopen(commPath, "r");
+			if(!commFile) ef_die("failed to open parent comm file %s", commPath);
+
+			if((len = getline(&line, &cap, commFile)) == -1)
+				ef_die("failed to read from parent comm file %s", commPath);
+
+			line[len - 1] = 0; // remove trailing newline
+
+			for(char* str = ef_env("EF_BREAKPOINT_IGNORE", "strace");; str = NULL) {
+				const char* ignore = strtok(str, ",");
+				if(!ignore) break;
+				if(strcmp(line, ignore) == 0) goto end;
+			}
+
 			inDebugger = true;
+
+		end:
 			break;
 		}
 	}
