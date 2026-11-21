@@ -21,9 +21,9 @@ For more information, see the [[file:LICENSE][license]].
 - Conditional breakpoints (=ef_breakpoint=)
 - Deferred cleanup (=ef_free=, …)
 - Block defer (=ef_defer=, =ef_defer_if=)
+- Dynamic arrays (=ef_list_new=, …)
 
 ** Planned modules
-- dynamic arrays (=EF_List=)
 - hash tables (fnv1a, sip, …?) (=EF_Hash=)
 - go-style flags (w/ usage gen?) (=EF_Flag=)
 - multi arena allocator (=EF_Arena=)

@@ -6,7 +6,8 @@ which includes many useful utility functions and data structures.
 
 You can use it in your project in two different ways:
 
-1. Copy it into your codebase and compile it together with your other source files
+1. Copy it into your codebase and compile it
+   together with your other source files
 
 2. Include it from anywhere (e.g. your system's standard include path)
    and define EF_IMPLEMENTATION in front of a *single* inclusion site
@@ -20,6 +21,7 @@ Modules included in this version of ef:
 - Conditional breakpoints (ef_breakpoint)
 - Deferred cleanup (ef_free, …)
 - Block defer (ef_defer, ef_defer_if)
+- Dynamic arrays (ef_list_new, …)
 
 This software is released into the public domain.
 For more information, see the end of this file.
@@ -70,6 +72,12 @@ to return either the first vararg or <default value>.
 
 #define ef_pick(x, _) x
 #define ef_pick1(_, x) x
+
+////////////////////////////////////////////////////////////////////////////////
+
+/** Zero-initialisation helper */
+
+#define zalloc(x) calloc(x, 1)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -156,6 +164,7 @@ Examples:
 
 #include <errno.h>
 #include <stdlib.h>
+#include <string.h>
 
 #define ef_die(fmt, ...)                                \
 	do {                                                \
@@ -205,15 +214,19 @@ These macros, when used as variable declaration modifiers, mark the variable
 for automatic cleanup once the scope in which it was declared is exited.
 
 Examples:
-  ef_free void* mem = malloc(1024);
-  ef_close int fd = open("foo", O_RDONLY);
-  ef_fclose FILE* file = fopen("foo", "r");
+  ef_free      void* mem = malloc(1024);
+  ef_list_free ef_list_new(int, numbers);
+  ef_close     int fd = open("foo", O_RDONLY);
+  ef_fclose    FILE* file = fopen("foo", "r");
 */
 
 #include <stdio.h>
 
 #define ef_free __attribute__((cleanup(_ef_free)))
 void _ef_free(void** arg);
+
+#define ef_list_free __attribute__((cleanup(_ef_list_free)))
+void _ef_list_free(void* arg);
 
 #define ef_close __attribute__((cleanup(_ef_close)))
 void _ef_close(int* arg);
@@ -259,11 +272,13 @@ void ef_call_defer(void (^*blk)(void));
 	  __VA_ARGS__;                                                               \
 	}
 #else
-#define ef_defer(...)                                       \
-	__extension__ void ef_concat(deferf, __LINE__)(void*) { \
-		__VA_ARGS__;                                        \
-	}                                                       \
-	__attribute__((cleanup(ef_concat(deferf, __LINE__)))) char ef_concat(deferi, __LINE__)
+#define ef_defer(...)                                              \
+	__extension__ void ef_concat(deferf, __LINE__)(void*) {        \
+		__VA_ARGS__;                                               \
+	}                                                              \
+	__extension__                                                  \
+		__attribute__((cleanup(ef_concat(deferf, __LINE__)))) char \
+		ef_concat(deferv, __LINE__)[0]
 #endif // __clang__
 
 #define ef_defer_if(cond, ...) ef_defer(if(!cond) return; __VA_ARGS__)
@@ -274,11 +289,133 @@ void ef_call_defer(void (^*blk)(void));
 
 ////////////////////////////////////////////////////////////////////////////////
 
+/** Dynamic arrays
+ef_list_new(type, name): Create a new list 'type* name'
+Its initial capacity will be EF_LIST_INIT, by default 256.
+If you define EF_LIST_ZERO, it will also be zero-initialised.
+
+ef_list_grow(name): Double the list's capacity until it fits the length.
+As with list creation, if EF_LIST_ZERO is defined,
+the newly allocated region will be zero-initialised.
+
+ef_list_cap(name), ef_list_len(name): Access a list's capacity or length.
+These are lvalues, meaning you can assign to & read from them.
+Don't forget to call ef_list_grow(name) when you increase length!
+
+ef_list_hdr(name): Access the header of the list.
+
+ef_list_get(name, i): Get the value of the i'th element of the list.
+
+ef_list_add(name, val): Add a value to the end of the list.
+Returns the address of the element just addedd.
+
+ef_list_pop(name): Pop the last element off the list.
+Returns the value of the element just popped.
+
+ef_list_ins(name, i, val): Insert a value into the list.
+Moves everything after position 'i' to the right.
+'i' can be equal to the list's length, the value is then appended.
+Returns the address of the element just inserted.
+
+ef_list_del(name, i): Delete an element from the list.
+Moves everything after position 'i' to the left.
+Returns the value of the element just deleted.
+
+ef_list_swp(name, i): Swap-and-pop the last -> i'th element of the list.
+Returns the value of the previous i'th element.
+
+ef_list_for(name, i?) { body... }: Iterate over a list.
+The name of the iteration parameter is optional and defaults to 'i'.
+*/
+
+#include <stdbool.h>
+
+#ifndef EF_LIST_INIT
+#define EF_LIST_INIT 256
+#endif
+
+#ifdef EF_LIST_ZERO
+#define ef_list_zero true
+#else
+#define ef_list_zero false
+#endif
+
+typedef struct {
+	size_t cap;
+	size_t len;
+} EF_List_Hdr;
+
+#define ef_list_hdr(ptr) (&((EF_List_Hdr*) ptr)[-1])
+#define ef_list_cap(ptr) ef_list_hdr(ptr)->cap
+#define ef_list_len(ptr) ef_list_hdr(ptr)->len
+
+#define ef_list_new(type, name) type* name = _ef_list_new(sizeof(type), EF_LIST_INIT, ef_list_zero);
+void* _ef_list_new(size_t typeSize, size_t cap, bool zero);
+
+#define ef_list_grow(ptr) (ptr = _ef_list_grow(ptr, sizeof(*ptr), ef_list_zero))
+void* _ef_list_grow(void* ptr, size_t typeSize, bool zero);
+
+#define ef_list_bounds(i, len) \
+	if(i >= len) ef_diex("index out of range: %zu >= %zu", i, len)
+
+#define ef_list_get(ptr, i) __extension__({ \
+	size_t len = ef_list_len(ptr);          \
+	ef_list_bounds(i, len);                 \
+	ptr[i];                                 \
+})
+
+#define ef_list_add(ptr, val) __extension__({ \
+	size_t len = ef_list_len(ptr)++;          \
+	ef_list_grow(ptr);                        \
+	ptr[len] = val;                           \
+	&ptr[len];                                \
+})
+
+#define ef_list_pop(ptr) __extension__({ \
+	size_t len = ef_list_len(ptr)--;     \
+	ef_list_bounds(0, len);              \
+	typeof(*ptr) val = ptr[len - 1];     \
+	val;                                 \
+})
+
+#define ef_list_ins(ptr, i, val) __extension__({ \
+	size_t len = ef_list_len(ptr)++;             \
+	ef_list_bounds(i, len + 1);                  \
+	ef_list_grow(ptr);                           \
+	memmove(                                     \
+		&ptr[i + 1], &ptr[i],                    \
+		(len - i) * sizeof(*ptr)                 \
+	);                                           \
+	ptr[i] = val;                                \
+	&ptr[i];                                     \
+})
+
+#define ef_list_del(ptr, i) __extension__({ \
+	size_t len = ef_list_len(ptr)--;        \
+	ef_list_bounds(i, len);                 \
+	typeof(*ptr) val = ptr[i];              \
+	memmove(                                \
+		&ptr[i], &ptr[i + 1],               \
+		(len - i - 1) * sizeof(*ptr)        \
+	);                                      \
+	val;                                    \
+})
+
+#define ef_list_swp(ptr, i) __extension__({ \
+	typeof(*ptr) val = ef_list_get(ptr, i); \
+	ptr[i]           = ef_list_pop(ptr);    \
+	val;                                    \
+})
+
+#define ef_list_for(ptr, ...) ef_list_for1(ptr, ef_pick##__VA_OPT__(1)(i, __VA_ARGS__))
+#define ef_list_for1(ptr, i) for(size_t i = 0; i < ef_list_len(ptr); i++)
+
+////////////////////////////////////////////////////////////////////////////////
+
 #if __INCLUDE_LEVEL__ == 0 || defined(EF_IMPLEMENTATION) ///////////////////////
 
 #include <linux/limits.h>
 #include <stdio.h>
-#include <string.h>
 #include <strings.h>
 #include <sys/types.h>
 
@@ -404,6 +541,8 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...) {
 
 	fprintf(stderr, "%s] [%s] ", levelStr, buf);
 	vfprintf(stderr, fmt, va);
+
+	va_end(va);
 }
 
 static void printValidLogLevels(void) {
@@ -430,8 +569,12 @@ void _ef_free(void** arg) {
 	free(*arg);
 }
 
+void _ef_list_free(void* arg) {
+	free(ef_list_hdr(*((void**) arg)));
+}
+
 void _ef_close(int* arg) {
-	close(*((int*) arg));
+	close(*arg);
 }
 
 void _ef_fclose(FILE** arg) {
@@ -445,6 +588,47 @@ void ef_call_defer(void (^*blk)(void)) {
 	(*blk)();
 }
 #endif
+
+////////////////////////////////////////////////////////////////////////////////
+
+void* _ef_list_new(size_t typeSize, size_t cap, bool zero) {
+	size_t off  = sizeof(EF_List_Hdr);
+	size_t size = off + typeSize * cap;
+
+	void* base = zero ? zalloc(size) : malloc(size);
+	if(!base) ef_die("allocation of %zu bytes failed", size);
+
+	EF_List_Hdr* hdr = base;
+	hdr->cap         = cap;
+	hdr->len         = 0;
+
+	return (u8*) base + off;
+}
+
+void* _ef_list_grow(void* ptr, size_t typeSize, bool zero) {
+	EF_List_Hdr* hdr = ef_list_hdr(ptr);
+	if(hdr->len <= hdr->cap) return ptr;
+
+	size_t oldCap = hdr->cap;
+	while(hdr->cap < hdr->len)
+		hdr->cap <<= 1;
+	size_t newCap = hdr->cap;
+
+	size_t off  = sizeof(*hdr);
+	size_t size = off + typeSize * hdr->cap;
+
+	u8* base = realloc(hdr, size);
+	if(!base) ef_die("reallocation of %zu bytes failed", size);
+
+	if(zero) memset(
+		base + off + oldCap * typeSize,
+		0, (newCap - oldCap) * typeSize
+	);
+
+	return base + off;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 
 #endif // __INCLUDE_LEVEL__/EF_IMPLEMENTATION guard
 

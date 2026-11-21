@@ -4,24 +4,21 @@
       let
         pkgs = import nixpkgs { inherit system; };
         inherit (pkgs.lib.fileset) toSource unions;
-        stdenv = pkgs.clangStdenv;
-      in
-      rec {
-        packages.default = stdenv.mkDerivation {
-          pname = "example";
+
+        mkTest = stdenv: stdenv.mkDerivation {
+          pname = "ef-test-${stdenv.cc.cc.pname}";
           version = "0.0.1";
 
           src = toSource {
             root = ./.;
             fileset = unions [
-              ./meson.build
-              ./src
               ./ef.c
+              ./main.c
+              ./meson.build
             ];
           };
 
           nativeBuildInputs = with pkgs; [
-            gcc
             meson
             ninja
             pkg-config
@@ -38,12 +35,22 @@
           mesonBuildType = "release";
           mesonFlags = [ "--werror" ];
         };
+      in
+      rec {
+        packages = rec {
+          clang = mkTest pkgs.clangStdenv;
+          gcc = mkTest pkgs.gccStdenv;
 
-        devShells.default = (pkgs.mkShell.override {
-          inherit stdenv;
-        }) {
-          inputsFrom = [ packages.default ];
+          default = pkgs.linkFarmFromDrvs "ef-test" [ clang gcc ];
+        };
+
+        devShells.default = pkgs.mkShell {
+          inputsFrom = builtins.attrValues packages;
           packages = with pkgs; [
+            (pkgs.writeShellScriptBin "clang" ''
+              exec "${lib.getExe clang}" "$@"
+            '')
+
             clang-tools
             gdb
             just
