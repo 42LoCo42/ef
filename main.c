@@ -11,8 +11,13 @@ int main(void) {
 
 	int* x = ef_list_ins(numbers, 1, 69);
 	int  y = ef_list_del(numbers, 1);
+	int  z = ef_list_swp(numbers, 7);
 
-	int z = ef_list_swp(numbers, 7);
+	ef_info(
+		"%p = %d",
+		&ef_list_get(numbers, 2),
+		ef_list_get(numbers, 2)
+	);
 
 	ef_info(
 		"hdr = %p, numbers = %p, numbers[1] = %p %d (was %d), %d, %zu/%zu",

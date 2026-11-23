@@ -311,6 +311,7 @@ Don't forget to call ef_list_grow(name) when you increase length!
 ef_list_hdr(name): Access the header of the list.
 
 ef_list_get(name, i): Get the value of the i'th element of the list.
+You can also take the address of the result.
 
 ef_list_add(name, val): Add a value to the end of the list.
 Returns the address of the element just addedd.
@@ -362,11 +363,11 @@ void* _ef_list_grow(void* ptr, size_t typeSize, bool zero);
 #define ef_list_bounds(i, len) \
 	if(i >= len) ef_diex("index out of range: %zu >= %zu", i, len)
 
-#define ef_list_get(ptr, i) __extension__({ \
-	size_t len = ef_list_len(ptr);          \
-	ef_list_bounds(i, len);                 \
-	ptr[i];                                 \
-})
+#define ef_list_get(ptr, i) (ptr[__extension__({ \
+	size_t len = ef_list_len(ptr);               \
+	ef_list_bounds(i, len);                      \
+	i;                                           \
+})])
 
 #define ef_list_add(ptr, val) __extension__({ \
 	size_t len = ef_list_len(ptr)++;          \
