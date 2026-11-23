@@ -70,14 +70,14 @@ Call this as ef_pick##__VA_OPT__(1)(<default value>, __VA_ARGS__)
 to return either the first vararg or <default value>.
 */
 
-#define ef_pick(x, _) x
-#define ef_pick1(_, x) x
+#define ef_pick(x, _) (x)
+#define ef_pick1(_, x) (x)
 
 ////////////////////////////////////////////////////////////////////////////////
 
 /** Zero-initialisation helper */
 
-#define zalloc(x) calloc(x, 1)
+#define zalloc(x) calloc((x), 1)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -90,7 +90,7 @@ Examples:
 ..char* home = ef_env("HOME", "/homeless-shelter");
 */
 
-#define ef_env(name, ...) _ef_env(name, ef_pick##__VA_OPT__(1)(NULL, __VA_ARGS__))
+#define ef_env(name, ...) _ef_env((name), ef_pick##__VA_OPT__(1)(NULL, __VA_ARGS__))
 char* _ef_env(const char* name, char* val);
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,10 +133,11 @@ typedef enum {
 #undef X
 } EF_LogLevel;
 
-#define ef_log(level, fmt, ...) _ef_log(           \
-	level,                                         \
-	"%s:%d: %s: " fmt "[m\n", __FILE__, __LINE__, \
-	__func__ __VA_OPT__(, ) __VA_ARGS__            \
+#define ef_log(level, fmt, ...) _ef_log( \
+	(level),                             \
+	"%s:%d: %s: " fmt "\x1B[m\n",        \
+	__FILE__, __LINE__,                  \
+	__func__ __VA_OPT__(, ) __VA_ARGS__  \
 )
 
 #define ef_note(...) ef_log(EF_LL_NOTE, __VA_ARGS__)
@@ -350,69 +351,69 @@ typedef struct {
 	size_t len;
 } EF_List_Hdr;
 
-#define ef_list_hdr(ptr) (&((EF_List_Hdr*) ptr)[-1])
+#define ef_list_hdr(ptr) (&((EF_List_Hdr*) (ptr))[-1])
 #define ef_list_cap(ptr) ef_list_hdr(ptr)->cap
 #define ef_list_len(ptr) ef_list_hdr(ptr)->len
 
 #define ef_list_new(type, name) type* name = _ef_list_new(sizeof(type), EF_LIST_INIT, ef_list_zero);
 void* _ef_list_new(size_t typeSize, size_t cap, bool zero);
 
-#define ef_list_grow(ptr) (ptr = _ef_list_grow(ptr, sizeof(*ptr), ef_list_zero))
+#define ef_list_grow(ptr) (ptr = _ef_list_grow((ptr), sizeof(*(ptr)), ef_list_zero))
 void* _ef_list_grow(void* ptr, size_t typeSize, bool zero);
 
 #define ef_list_bounds(i, len) \
-	if(i >= len) ef_diex("index out of range: %zu >= %zu", i, len)
+	if((i) >= (len)) ef_diex("index out of range: %zu >= %zu", (i), (len))
 
-#define ef_list_get(ptr, i) (ptr[__extension__({ \
-	size_t len = ef_list_len(ptr);               \
-	ef_list_bounds(i, len);                      \
-	i;                                           \
+#define ef_list_get(ptr, i) ((ptr)[__extension__({ \
+	size_t len = ef_list_len(ptr);                 \
+	ef_list_bounds((i), len);                      \
+	i;                                             \
 })])
 
 #define ef_list_add(ptr, val) __extension__({ \
 	size_t len = ef_list_len(ptr)++;          \
 	ef_list_grow(ptr);                        \
-	ptr[len] = val;                           \
-	&ptr[len];                                \
+	(ptr)[len] = (val);                       \
+	&(ptr)[len];                              \
 })
 
 #define ef_list_pop(ptr) __extension__({ \
 	size_t len = ef_list_len(ptr)--;     \
 	ef_list_bounds(0, len);              \
-	typeof(*ptr) val = ptr[len - 1];     \
+	typeof(*(ptr)) val = (ptr)[len - 1]; \
 	val;                                 \
 })
 
 #define ef_list_ins(ptr, i, val) __extension__({ \
 	size_t len = ef_list_len(ptr)++;             \
-	ef_list_bounds(i, len + 1);                  \
+	ef_list_bounds((i), len + 1);                \
 	ef_list_grow(ptr);                           \
 	memmove(                                     \
-		&ptr[i + 1], &ptr[i],                    \
-		(len - i) * sizeof(*ptr)                 \
+		&ptr[(i) + 1], &ptr[i],                  \
+		(len - (i)) * sizeof(*(ptr))             \
 	);                                           \
-	ptr[i] = val;                                \
-	&ptr[i];                                     \
+	(ptr)[i] = val;                              \
+	&(ptr)[i];                                   \
 })
 
 #define ef_list_del(ptr, i) __extension__({ \
 	size_t len = ef_list_len(ptr)--;        \
-	ef_list_bounds(i, len);                 \
-	typeof(*ptr) val = ptr[i];              \
+	ef_list_bounds((i), len);               \
+	typeof(*(ptr)) val = (ptr)[i];          \
 	memmove(                                \
-		&ptr[i], &ptr[i + 1],               \
-		(len - i - 1) * sizeof(*ptr)        \
+		&ptr[i], &ptr[(i) + 1],             \
+		(len - (i) - 1) * sizeof(*(ptr))    \
 	);                                      \
 	val;                                    \
 })
 
-#define ef_list_swp(ptr, i) __extension__({ \
-	typeof(*ptr) val = ef_list_get(ptr, i); \
-	ptr[i]           = ef_list_pop(ptr);    \
-	val;                                    \
+#define ef_list_swp(ptr, i) __extension__({       \
+	typeof(*(ptr)) val = ef_list_get((ptr), (i)); \
+	(ptr)[i]           = ef_list_pop(ptr);        \
+	val;                                          \
 })
 
-#define ef_list_for(ptr, ...) ef_list_for1(ptr, ef_pick##__VA_OPT__(1)(i, __VA_ARGS__))
+#define ef_list_for(ptr, ...) ef_list_for1((ptr), ef_pick##__VA_OPT__(1)(i, __VA_ARGS__))
 #define ef_list_for1(ptr, i) for(size_t i = 0; i < ef_list_len(ptr); i++)
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -535,9 +536,9 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...) {
 
 	const char* levelStr = NULL;
 	switch(level) {
-#define X(x, c)                     \
-	case EF_LL_##x:                 \
-		levelStr = "[" #c "m[" #x; \
+#define X(x, c)                        \
+	case EF_LL_##x:                    \
+		levelStr = "\x1B[" #c "m[" #x; \
 		break;
 		EF_LOGLEVELS
 #undef X
@@ -552,7 +553,7 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...) {
 
 static void printValidLogLevels(void) {
 	fprintf(stderr, "Valid log levels are:\n");
-#define X(x, c) fprintf(stderr, "  [%dm%s[m (%d)\n", c, #x, EF_LL_##x);
+#define X(x, c) fprintf(stderr, "  \x1B[%dm%s\x1B[m (%d)\n", c, #x, EF_LL_##x);
 	EF_LOGLEVELS
 #undef X
 	fprintf(stderr, "Or specify -1, 'false' or 'no' to disable logging\n");
