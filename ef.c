@@ -201,10 +201,16 @@ If the program is built in release mode, all calls to ef_breakpoint
 and its supporting logic will be a no-op (introduce no extra code).
 */
 
+#include <stdbool.h>
+
 #ifdef NDEBUG
 #define ef_breakpoint()
 #else
-void ef_breakpoint(void);
+extern bool ef_in_debugger;
+#define ef_breakpoint()                     \
+	do {                                    \
+		if(ef_in_debugger) __asm__("int3"); \
+	} while(0)
 #endif
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -328,8 +334,6 @@ ef_list_for(name, i?) { body... }: Iterate over a list.
 The name of the iteration parameter is optional and defaults to 'i'.
 */
 
-#include <stdbool.h>
-
 #ifndef EF_LIST_INIT
 #define EF_LIST_INIT 256
 #endif
@@ -425,7 +429,7 @@ static char*       logTimeFmt;
 static void printValidLogLevels(void);
 
 #ifndef NDEBUG
-static bool inDebugger = false;
+bool ef_in_debugger = false;
 #endif
 
 static void __attribute__((constructor)) init(void) {
@@ -494,7 +498,7 @@ static void __attribute__((constructor)) init(void) {
 				if(strcmp(line, ignore) == 0) goto end;
 			}
 
-			inDebugger = true;
+			ef_in_debugger = true;
 
 		end:
 			break;
@@ -552,14 +556,6 @@ static void printValidLogLevels(void) {
 #undef X
 	fprintf(stderr, "Or specify -1, 'false' or 'no' to disable logging\n");
 }
-
-////////////////////////////////////////////////////////////////////////////////
-
-#ifndef NDEBUG
-void ef_breakpoint(void) {
-	if(inDebugger) __asm__("int3");
-}
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
