@@ -13,7 +13,7 @@ int main(void) {
 	int  y = ef_list_del(numbers, 1);
 	int  z = ef_list_swp(numbers, 6);
 
-	ef_info(
+	ef_note(
 		"%p = %d",
 		&ef_list_get(numbers, 2),
 		ef_list_get(numbers, 2)

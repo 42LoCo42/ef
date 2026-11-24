@@ -101,8 +101,8 @@ Additionally, ef_log(EF_LL_<LEVEL>, fmt, ...) is provided
 if you need to define the log level programmatically.
 
 Available log levels are:
-- 'note' (level 0; for debug messages)
-- 'info' (level 1; for success; this is the default log level)
+- 'note' (level 0; for debug messages; default log level in debug builds)
+- 'info' (level 1; for success; default log level in release builds)
 - 'warn' (level 2; for non-critical failure)
 - 'fail' (level 3; for critical failure; also used by ef_die)
 
@@ -425,8 +425,15 @@ void* _ef_list_grow(void* ptr, size_t typeSize, bool zero);
 #include <strings.h>
 #include <sys/types.h>
 
-static EF_LogLevel logLevel = EF_LL_INFO;
-static char*       logTimeFmt;
+static EF_LogLevel logLevel =
+#ifdef NDEBUG
+	EF_LL_INFO
+#else
+	EF_LL_NOTE
+#endif
+	;
+
+static char* logTimeFmt;
 
 static void printValidLogLevels(void);
 
