@@ -30,14 +30,9 @@ int main(void) {
 
 	ef_breakpoint();
 
-	ef_defer(ef_info("defer called"));
-
-	bool foo = true;
-	ef_defer_if(
-		foo,
-		ef_info("defer_if called");
-		ef_info("foo = %d", foo);
-	);
+	ef_defer {
+		ef_info("defer called");
+	};
 
 	for(size_t i = 0; i < 10; i++) {
 		ef_free void* mem = malloc(1024);

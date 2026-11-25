@@ -248,48 +248,39 @@ Pass statements to ef_defer to execute them once the current scope is exited.
 Seperate defers execute in reverse registration order, so last-to-first.
 They can also capture variables in their scope.
 
-For a conditional defer, use ef_defer_if.
-Note that the condition is checked once the defer actually runs,
-not when it is being registered.
-
 When compiling with clang, this module requires the compiler flags
 '-fblocks' and '-lBlocksRuntime' to be passed.
 Alternatively, define EF_NO_DEFER if you don't want to use defer.
 
 Examples:
-  ef_defer(puts("exiting..."));
-
-  ef_defer_if(
-    someCondition(),
-    puts("conditional logic...");
-    puts("multiple statements work!");
-  );
+  ef_defer {
+    ef_info("hi from defer!");
+  };
 */
 
 #ifndef EF_NO_DEFER
-#ifdef __GNUC__
+#ifdef EF_LSP
+#define ef_defer while(0)
+#elifdef __GNUC__
 #ifdef __clang__
 #define EF_CALL_DEFER
 void ef_call_defer(void (^*blk)(void));
 
-#define ef_defer(...)                                                            \
+#define ef_defer                                                                 \
 	__attribute__((cleanup(ef_call_defer))) void (^ef_concat(deferf, __LINE__))( \
 		void                                                                     \
-	) = ^{                                                                       \
-	  __VA_ARGS__;                                                               \
-	}
-#else
-#define ef_defer(...)                                              \
-	__extension__ void ef_concat(deferf, __LINE__)(void*) {        \
-		__VA_ARGS__;                                               \
-	}                                                              \
+	) = ^
+#else // __clang__
+#define ef_defer                                                   \
+	__extension__ auto void ef_concat(deferf, __LINE__)(void*);    \
 	__extension__                                                  \
 		__attribute__((cleanup(ef_concat(deferf, __LINE__)))) char \
-		ef_concat(deferv, __LINE__)[0]
+					   ef_concat(deferv, __LINE__)[0];             \
+	__extension__ void ef_concat(deferf, __LINE__)(void*)
 #endif // __clang__
 
-#define ef_defer_if(cond, ...) ef_defer(if(!cond) return; __VA_ARGS__)
-#else
+/* #define ef_defer_if(cond, ...) ef_defer(if(!cond) return; __VA_ARGS__) */
+#else  // __GNUC__
 #error "ef_defer: unsupported compiler; need gcc or clang!"
 #endif // __GNUC__
 #endif // !EF_NO_DEFER
