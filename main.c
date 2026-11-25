@@ -3,6 +3,14 @@
 
 #include <fcntl.h>
 
+i32 sum(i32* numbers, size_t len) {
+	i32 result = 0;
+	for(size_t i = 0; i < len; i++) {
+		result += numbers[i];
+	}
+	return result;
+}
+
 int main(void) {
 	ef_list_free ef_list_new(i32, numbers);
 
@@ -27,6 +35,8 @@ int main(void) {
 	);
 
 	ef_list_for(numbers) ef_info("numbers[%zu] = %d", i, numbers[i]);
+
+	ef_info("sum = %d", sum(ef_list_pl(numbers)));
 
 	ef_breakpoint();
 

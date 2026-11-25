@@ -325,6 +325,10 @@ Returns the value of the previous i'th element.
 
 ef_list_for(name, i?) { body... }: Iterate over a list.
 The name of the iteration parameter is optional and defaults to 'i'.
+
+ef_list_lp(name), ef_list_pl(name): Pass length and pointer as arguments.
+lp passes length, then pointer.
+pl passes pointer, then length.
 */
 
 #ifndef EF_LIST_INIT
@@ -406,6 +410,9 @@ void* _ef_list_grow(void* ptr, size_t typeSize, bool zero);
 
 #define ef_list_for(ptr, ...) ef_list_for1((ptr), ef_pick##__VA_OPT__(1)(i, __VA_ARGS__))
 #define ef_list_for1(ptr, i) for(size_t i = 0; i < ef_list_len(ptr); i++)
+
+#define ef_list_lp(ptr) ef_list_len(ptr), (ptr)
+#define ef_list_pl(ptr) (ptr), ef_list_len(ptr)
 
 ////////////////////////////////////////////////////////////////////////////////
 
