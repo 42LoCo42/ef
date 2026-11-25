@@ -1,4 +1,3 @@
-#define EF_LIST_ZERO
 #include "ef.c"
 
 #include <fcntl.h>
@@ -15,9 +14,9 @@ int main(void) {
 	ef_auto_list_free ef_list_new(i32, numbers);
 
 	for(size_t i = 0; i < 10; i++)
-		ef_list_add(numbers, i);
+		ef_list_put(numbers, i);
 
-	int* x = ef_list_ins(numbers, -5 + 8, 69);
+	int* x = ef_list_ins(numbers, 3, 69);
 	int  y = ef_list_del(numbers, 1);
 	int  z = ef_list_swp(numbers, 6);
 
@@ -28,9 +27,9 @@ int main(void) {
 	);
 
 	ef_info(
-		"hdr = %p, numbers = %p, numbers[1] = %p %d (was %d), %d, %zu/%zu",
+		"hdr = %p, ptr = %p, [3] = %d, [1] was %d, [6] was %d, %zu/%zu",
 		(u8*) ef_list_hdr(numbers),
-		(u8*) numbers, (u8*) x, *x, y, z,
+		(u8*) numbers, *x, y, z,
 		ef_list_len(numbers), ef_list_cap(numbers)
 	);
 

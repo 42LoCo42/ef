@@ -58,26 +58,29 @@ typedef double f64;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Helper for macro symbol concatenation */
+/** Some helper macros */
 
+/** Macro symbol concatenation */
 #define ef_concat(a, b) ef_concat1(a, b)
 #define ef_concat1(a, b) a##b
 
-////////////////////////////////////////////////////////////////////////////////
-
 /** Helper for a single optional macro argument
 Call this as ef_pick##__VA_OPT__(1)(<default value>, __VA_ARGS__)
-to return either the first vararg or <default value>.
-*/
-
+to return either the first vararg or <default value>. */
 #define ef_pick(x, _) (x)
 #define ef_pick1(_, x) (x)
 
-////////////////////////////////////////////////////////////////////////////////
-
 /** Zero-initialisation helper */
-
 #define zalloc(x) calloc((x), 1)
+
+/** Block expression */
+#define ef_expr(...) __extension__({__VA_ARGS__})
+
+/** Zero-size dummy var that triggers a cleanup function */
+#define ef_cleanup(f)                    \
+	__extension__                        \
+		__attribute__((cleanup(f))) char \
+		ef_concat(_ef_cleanup, __LINE__)[0]
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -120,6 +123,24 @@ Examples:
   ef_log(EF_LL_FAIL, "oh no!");
 */
 
+#include <stddef.h>
+
+typedef struct {
+	char*       file;
+	size_t      line;
+	const char* func;
+} EF_Loc;
+
+extern EF_Loc ef_tmp_loc;
+
+void ef_tmp_loc_reset(void*);
+
+#define ef_loc(...) ef_expr(                              \
+	ef_tmp_loc = (EF_Loc) {__FILE__, __LINE__, __func__}; \
+	ef_cleanup(ef_tmp_loc_reset);                         \
+	__VA_ARGS__                                           \
+)
+
 #define EF_LOGLEVELS \
 	X(NOTE, 37)      \
 	X(INFO, 32)      \
@@ -128,16 +149,13 @@ Examples:
 
 typedef enum {
 #define X(x, _) EF_LL_##x,
-	EF_LOGLEVELS
-		EF_LL_Count,
+	EF_LOGLEVELS EF_LL_Count,
 #undef X
 } EF_LogLevel;
 
-#define ef_log(level, fmt, ...) _ef_log( \
-	(level),                             \
-	"%s:%d: %s: " fmt "\x1B[m\n",        \
-	__FILE__, __LINE__,                  \
-	__func__ __VA_OPT__(, ) __VA_ARGS__  \
+#define ef_log(level, fmt, ...) _ef_log(              \
+	(level), (EF_Loc) {__FILE__, __LINE__, __func__}, \
+	fmt __VA_OPT__(, ) __VA_ARGS__                    \
 )
 
 #define ef_note(...) ef_log(EF_LL_NOTE, __VA_ARGS__)
@@ -145,7 +163,7 @@ typedef enum {
 #define ef_warn(...) ef_log(EF_LL_WARN, __VA_ARGS__)
 #define ef_fail(...) ef_log(EF_LL_FAIL, __VA_ARGS__)
 
-void _ef_log(EF_LogLevel level, const char* fmt, ...);
+void _ef_log(EF_LogLevel level, EF_Loc loc, const char* fmt, ...);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -280,20 +298,17 @@ Examples:
 #define EF_CALL_DEFER
 void ef_call_defer(void (^*blk)(void));
 
-#define ef_defer                                                                 \
-	__attribute__((cleanup(ef_call_defer))) void (^ef_concat(deferf, __LINE__))( \
-		void                                                                     \
-	) = ^
+#define ef_defer               \
+	__attribute__((            \
+		cleanup(ef_call_defer) \
+	)) void (^ef_concat(_ef_defer, __LINE__))(void) = ^
 #else // __clang__
-#define ef_defer                                                   \
-	__extension__ auto void ef_concat(deferf, __LINE__)(void*);    \
-	__extension__                                                  \
-		__attribute__((cleanup(ef_concat(deferf, __LINE__)))) char \
-					   ef_concat(deferv, __LINE__)[0];             \
-	__extension__ void ef_concat(deferf, __LINE__)(void*)
+#define ef_defer ef_defer1(ef_concat(_ef_defer, __LINE__))
+#define ef_defer1(f)                  \
+	__extension__ auto void f(void*); \
+	ef_cleanup(f);                    \
+	__extension__ void f(void*)
 #endif // __clang__
-
-/* #define ef_defer_if(cond, ...) ef_defer(if(!cond) return; __VA_ARGS__) */
 #else  // __GNUC__
 #error "ef_defer: unsupported compiler; need gcc or clang!"
 #endif // __GNUC__
@@ -310,17 +325,21 @@ ef_list_grow(name): Double the list's capacity until it fits the length.
 As with list creation, if EF_LIST_ZERO is defined,
 the newly allocated region will be zero-initialised.
 
-ef_list_cap(name), ef_list_len(name): Access a list's capacity or length.
+ef_list_ets(name)
+ef_list_cap(name)
+ef_list_len(name)
+Access a list's element type size, capacity or length.
 These are lvalues, meaning you can assign to & read from them.
-Don't forget to call ef_list_grow(name) when you increase length!
+However, you should only ever assign to length & then immediately
+call ef_list_grow; everything else can mess up the list!
 
 ef_list_hdr(name): Access the header of the list.
 
 ef_list_get(name, i): Get the value of the i'th element of the list.
 You can also take the address of the result.
 
-ef_list_add(name, val): Add a value to the end of the list.
-Returns the address of the element just addedd.
+ef_list_put(name, val): Add a value to the end of the list.
+Returns the address of the element just added.
 
 ef_list_pop(name): Pop the last element off the list.
 Returns the value of the element just popped.
@@ -356,71 +375,63 @@ pl passes pointer, then length.
 #endif
 
 typedef struct {
+	size_t ets; // element type size
 	size_t cap;
 	size_t len;
 } EF_List_Hdr;
 
-#define ef_list_hdr(ptr) (&((EF_List_Hdr*) (ptr))[-1])
+#define ef_list_bounds(...) ef_loc(_ef_list_bounds(__VA_ARGS__);)
+void _ef_list_bounds(size_t i, size_t len);
+
+EF_List_Hdr* ef_list_hdr(void* ptr);
+#define ef_list_ets(ptr) ef_list_hdr(ptr)->ets
 #define ef_list_cap(ptr) ef_list_hdr(ptr)->cap
 #define ef_list_len(ptr) ef_list_hdr(ptr)->len
 
-#define ef_list_new(type, name) type* name = _ef_list_new(sizeof(type), EF_LIST_INIT, ef_list_zero);
-void* _ef_list_new(size_t typeSize, size_t cap, bool zero);
+#define ef_list_new(type, name)                                 \
+	type* name = ef_loc(                                        \
+		_ef_list_new(sizeof(type), EF_LIST_INIT, ef_list_zero); \
+	)
+void* _ef_list_new(size_t ets, size_t cap, bool zero);
 
-#define ef_list_grow(ptr) (ptr = _ef_list_grow((ptr), sizeof(*(ptr)), ef_list_zero))
-void* _ef_list_grow(void* ptr, size_t typeSize, bool zero);
+#define ef_list_grow(ptr) ef_loc(                 \
+	_ef_list_grow((void**) &(ptr), ef_list_zero); \
+)
+void _ef_list_grow(void** ptr, bool zero);
 
-#define ef_list_bounds(i, len) \
-	if((i) >= (len)) ef_diex("index out of range: %zu >= %zu", (i), (len))
+#define ef_list_get(ptr, i) ((ptr)[ef_loc(_ef_list_get((ptr), (i));)])
+size_t _ef_list_get(void* ptr, size_t i);
 
-#define ef_list_get(ptr, i) ((ptr)[__extension__({ \
-	size_t len = ef_list_len(ptr);                 \
-	ef_list_bounds((i), len);                      \
-	i;                                             \
-})])
+#define ef_list_put(ptr, val) ef_loc( \
+	typeof(ptr) el = _ef_list_put(    \
+		(void**) &(ptr)               \
+	);                                \
+	*el = (val); el;                  \
+)
+void* _ef_list_put(void** ptr);
 
-#define ef_list_add(ptr, val) __extension__({ \
-	size_t len = ef_list_len(ptr)++;          \
-	ef_list_grow(ptr);                        \
-	(ptr)[len] = (val);                       \
-	&(ptr)[len];                              \
-})
+#define ef_list_pop(ptr) ef_loc(        \
+	*((typeof(ptr)) _ef_list_pop(ptr)); \
+)
+void* _ef_list_pop(void* ptr);
 
-#define ef_list_pop(ptr) __extension__({ \
-	size_t len = ef_list_len(ptr)--;     \
-	ef_list_bounds(0, len);              \
-	typeof(*(ptr)) val = (ptr)[len - 1]; \
-	val;                                 \
-})
+#define ef_list_ins(ptr, i, val) ef_loc( \
+	typeof(ptr) el = _ef_list_ins(       \
+		(void**) &(ptr), (i)             \
+	);                                   \
+	*el = (val); el;                     \
+)
+void* _ef_list_ins(void** ptr, size_t i);
 
-#define ef_list_ins(ptr, i, val) __extension__({ \
-	size_t len = ef_list_len(ptr)++;             \
-	ef_list_bounds((i), len + 1);                \
-	ef_list_grow(ptr);                           \
-	memmove(                                     \
-		&ptr[(i) + 1], &ptr[i],                  \
-		(len - (i)) * sizeof(*(ptr))             \
-	);                                           \
-	(ptr)[i] = val;                              \
-	&(ptr)[i];                                   \
-})
+#define ef_list_del(ptr, i) ef_loc(            \
+	*((typeof(ptr)) _ef_list_del((ptr), (i))); \
+)
+void* _ef_list_del(void* ptr, size_t i);
 
-#define ef_list_del(ptr, i) __extension__({ \
-	size_t len = ef_list_len(ptr)--;        \
-	ef_list_bounds((i), len);               \
-	typeof(*(ptr)) val = (ptr)[i];          \
-	memmove(                                \
-		&ptr[i], &ptr[(i) + 1],             \
-		(len - (i) - 1) * sizeof(*(ptr))    \
-	);                                      \
-	val;                                    \
-})
-
-#define ef_list_swp(ptr, i) __extension__({       \
-	typeof(*(ptr)) val = ef_list_get((ptr), (i)); \
-	(ptr)[i]           = ef_list_pop(ptr);        \
-	val;                                          \
-})
+#define ef_list_swp(ptr, i) ef_loc(            \
+	*((typeof(ptr)) _ef_list_swp((ptr), (i))); \
+)
+void* _ef_list_swp(void* ptr, size_t i);
 
 #define ef_list_for(ptr, ...) ef_list_for1((ptr), ef_pick##__VA_OPT__(1)(i, __VA_ARGS__))
 #define ef_list_for1(ptr, i) for(size_t i = 0; i < ef_list_len(ptr); i++)
@@ -494,7 +505,7 @@ static void __attribute__((constructor)) init(void) {
 	FILE*       statusFile = fopen(statusPath, "r");
 	if(!statusFile) ef_die("failed to open %s", statusPath);
 
-	size_t getline(char** restrict lineptr, size_t* restrict n, FILE* restrict stream);
+	ssize_t getline(char** restrict lineptr, size_t* restrict n, FILE* restrict stream);
 
 	char*   line = NULL;
 	size_t  cap  = 0;
@@ -543,11 +554,14 @@ char* _ef_env(const char* name, char* val) {
 #include <stdarg.h>
 #include <time.h>
 
-void _ef_log(EF_LogLevel level, const char* fmt, ...) {
-	if(level < logLevel) return;
+EF_Loc ef_tmp_loc;
 
-	va_list va;
-	va_start(va, fmt);
+void ef_tmp_loc_reset(void*) {
+	ef_tmp_loc = (EF_Loc) {0};
+}
+
+void _ef_log(EF_LogLevel level, EF_Loc loc, const char* fmt, ...) {
+	if(level < logLevel) return;
 
 	char   buf[256] = {0};
 	time_t now      = time(NULL);
@@ -564,10 +578,20 @@ void _ef_log(EF_LogLevel level, const char* fmt, ...) {
 	default:
 	}
 
-	fprintf(stderr, "%s] [%s] ", levelStr, buf);
-	vfprintf(stderr, fmt, va);
+	if(ef_tmp_loc.file) loc = ef_tmp_loc;
 
+	fprintf(
+		stderr,
+		"%s] [%s] %s:%zu: %s: ",
+		levelStr, buf, loc.file, loc.line, loc.func
+	);
+
+	va_list va;
+	va_start(va, fmt);
+	vfprintf(stderr, fmt, va);
 	va_end(va);
+
+	fprintf(stderr, "\x1B[m\n");
 }
 
 static void printValidLogLevels(void) {
@@ -616,23 +640,36 @@ void ef_call_defer(void (^*blk)(void)) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void* _ef_list_new(size_t typeSize, size_t cap, bool zero) {
+static u8 ef_list_buf[1 << 30];
+
+void _ef_list_bounds(size_t i, size_t len) {
+	if(i >= len) ef_diex("index out of range: %zu >= %zu", i, len);
+}
+
+EF_List_Hdr* ef_list_hdr(void* ptr) {
+	return &((EF_List_Hdr*) (ptr))[-1];
+}
+
+void* _ef_list_new(size_t ets, size_t cap, bool zero) {
 	size_t off  = sizeof(EF_List_Hdr);
-	size_t size = off + typeSize * cap;
+	size_t size = off + ets * cap;
 
 	void* base = zero ? zalloc(size) : malloc(size);
-	if(!base) ef_die("allocation of %zu bytes failed", size);
+	if(!base) ef_die("allocation of cap %zu (%zu bytes)failed", cap, size);
 
 	EF_List_Hdr* hdr = base;
+	hdr->ets         = ets;
 	hdr->cap         = cap;
 	hdr->len         = 0;
 
 	return (u8*) base + off;
 }
 
-void* _ef_list_grow(void* ptr, size_t typeSize, bool zero) {
-	EF_List_Hdr* hdr = ef_list_hdr(ptr);
-	if(hdr->len <= hdr->cap) return ptr;
+void _ef_list_grow(void** ptr, bool zero) {
+	EF_List_Hdr* hdr = ef_list_hdr(*ptr);
+	if(hdr->len <= hdr->cap) return;
+
+	size_t ets = hdr->ets;
 
 	size_t oldCap = hdr->cap;
 	while(hdr->cap < hdr->len)
@@ -640,17 +677,78 @@ void* _ef_list_grow(void* ptr, size_t typeSize, bool zero) {
 	size_t newCap = hdr->cap;
 
 	size_t off  = sizeof(*hdr);
-	size_t size = off + typeSize * hdr->cap;
+	size_t size = off + ets * hdr->cap;
 
 	u8* base = realloc(hdr, size);
-	if(!base) ef_die("reallocation of %zu bytes failed", size);
+	if(!base) ef_die("reallocation to cap %zu (%zu bytes) failed", newCap, size);
 
 	if(zero) memset(
-		base + off + oldCap * typeSize,
-		0, (newCap - oldCap) * typeSize
+		base + off + ets * oldCap,
+		0, ets * (newCap - oldCap)
 	);
 
-	return base + off;
+	*ptr = base + off;
+}
+
+size_t _ef_list_get(void* ptr, size_t i) {
+	_ef_list_bounds(i, ef_list_len(ptr));
+	return i;
+}
+
+void* _ef_list_put(void** ptr) {
+	size_t ets = ef_list_ets(*ptr);
+	size_t len = ef_list_len(*ptr)++;
+	_ef_list_grow(ptr, false);
+
+	return (u8*) *ptr + ets * len;
+}
+
+void* _ef_list_pop(void* ptr) {
+	size_t ets = ef_list_ets(ptr);
+	size_t len = ef_list_len(ptr)--;
+	_ef_list_bounds(0, len);
+
+	return (u8*) ptr + ets * (len - 1);
+}
+
+void* _ef_list_ins(void** ptr, size_t i) {
+	size_t ets = ef_list_ets(*ptr);
+	size_t len = ef_list_len(*ptr)++;
+	_ef_list_bounds(i, len);
+
+	_ef_list_grow(ptr, false);
+
+	u8* src = (u8*) (*ptr) + ets * i;
+	u8* dst = src + ets;
+	memmove(dst, src, ets * (len - i));
+	return src;
+}
+
+void* _ef_list_del(void* ptr, size_t i) {
+	size_t ets = ef_list_ets(ptr);
+	size_t len = ef_list_len(ptr)--;
+	_ef_list_bounds(i, len);
+
+	memcpy(ef_list_buf, (u8*) ptr + ets * i, ets);
+
+	u8* dst = (u8*) ptr + ets * i;
+	u8* src = dst + ets;
+	memmove(dst, src, ets * (len - i - 1));
+
+	return ef_list_buf;
+}
+
+void* _ef_list_swp(void* ptr, size_t i) {
+	size_t ets = ef_list_ets(ptr);
+	size_t len = ef_list_len(ptr)--;
+	_ef_list_bounds(i, len);
+
+	u8* src = (u8*) ptr + ets * (len - 1);
+	u8* dst = (u8*) ptr + ets * i;
+	memcpy(ef_list_buf, dst, ets);
+	memcpy(dst, src, ets);
+
+	return ef_list_buf;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
