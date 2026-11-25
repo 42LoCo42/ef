@@ -12,7 +12,7 @@ i32 sum(i32* numbers, size_t len) {
 }
 
 int main(void) {
-	ef_list_free ef_list_new(i32, numbers);
+	ef_auto_list_free ef_list_new(i32, numbers);
 
 	for(size_t i = 0; i < 10; i++)
 		ef_list_add(numbers, i);
@@ -45,12 +45,12 @@ int main(void) {
 	};
 
 	for(size_t i = 0; i < 10; i++) {
-		ef_free void* mem = malloc(1024);
+		ef_auto_free void* mem = malloc(1024);
 
-		ef_close int fd = creat("foo", 0644);
+		ef_auto_close int fd = creat("foo", 0644);
 		if(fd < 0) ef_die("failed to open foo");
 
-		ef_fclose FILE* file = fopen("foo", "w");
+		ef_auto_fclose FILE* file = fopen("foo", "w");
 		if(!file) ef_die("failed to open foo");
 	}
 }

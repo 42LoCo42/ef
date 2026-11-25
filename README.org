@@ -19,7 +19,7 @@ For more information, see the [[file:LICENSE][license]].
 - Logging system (=ef_log=, =ef_<level>=)
 - Log-and-abort (=ef_die=, =ef_diex=)
 - Conditional breakpoints (=ef_breakpoint=)
-- Deferred cleanup (=ef_free=, …)
+- Resource cleanup (=ef_free=, =ef_auto_free=, …)
 - Block defer (=ef_defer=, =ef_defer_if=)
 - Dynamic arrays (=ef_list_new=, …)
 

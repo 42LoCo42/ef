@@ -19,7 +19,7 @@ Modules included in this version of ef:
 - Logging system (ef_log, ef_<level>)
 - Log-and-abort (ef_die, ef_diex)
 - Conditional breakpoints (ef_breakpoint)
-- Deferred cleanup (ef_free, …)
+- Resource cleanup (ef_free, ef_auto_free, …)
 - Block defer (ef_defer, ef_defer_if)
 - Dynamic arrays (ef_list_new, …)
 
@@ -216,30 +216,44 @@ extern bool ef_in_debugger;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-/** Deferred cleanup
-These macros, when used as variable declaration modifiers, mark the variable
-for automatic cleanup once the scope in which it was declared is exited.
+/** Resource cleanup
+These macros come in pairs of immediate & deferred cleanup of a resource,
+whereas the latter are variable declaration modifiers.
+They deinitialize their respective resource and set the variable
+to an invalid value, like NULL for pointers or -1 for file descriptors.
+
+Currently implemented:
+  - ef_free: for heap allocations
+  - ef_list_free: for ef_lists (allocated with ef_list_new)
+  - ef_close: for kernel file descriptors (int)
+..- ef_fclose: for POSIX file objects (FILE*)
 
 Examples:
-  ef_free      void* mem = malloc(1024);
-  ef_list_free ef_list_new(int, numbers);
-  ef_close     int fd = open("foo", O_RDONLY);
-  ef_fclose    FILE* file = fopen("foo", "r");
+  void* mem = malloc(1024);
+  ef_free(mem);
+  // mem was freed & is now NULL
+
+  ef_auto_free void* mem = malloc(1024);
+  // mem will be freed at scope exit
 */
 
 #include <stdio.h>
 
-#define ef_free __attribute__((cleanup(_ef_free)))
-void _ef_free(void** arg);
+#define ef_free(val) _ef_free(&(val))
+#define ef_auto_free __attribute__((cleanup(_ef_free)))
+void _ef_free(void** val);
 
-#define ef_list_free __attribute__((cleanup(_ef_list_free)))
-void _ef_list_free(void* arg);
+#define ef_list_free(val) _ef_list_free(&(val))
+#define ef_auto_list_free __attribute__((cleanup(_ef_list_free)))
+void _ef_list_free(void* val);
 
-#define ef_close __attribute__((cleanup(_ef_close)))
-void _ef_close(int* arg);
+#define ef_close(val) _ef_close(&(val))
+#define ef_auto_close __attribute__((cleanup(_ef_close)))
+void _ef_close(int* val);
 
-#define ef_fclose __attribute__((cleanup(_ef_fclose)))
-void _ef_fclose(FILE** arg);
+#define ef_fclose(val) _ef_fclose(&(val))
+#define ef_auto_fclose __attribute__((cleanup(_ef_fclose)))
+void _ef_fclose(FILE** val);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -568,20 +582,28 @@ static void printValidLogLevels(void) {
 
 #include <unistd.h>
 
-void _ef_free(void** arg) {
-	free(*arg);
+void _ef_free(void** val) {
+	if(*val == NULL) return;
+	free(*val);
+	*val = 0;
 }
 
-void _ef_list_free(void* arg) {
-	free(ef_list_hdr(*((void**) arg)));
+void _ef_list_free(void* _val) {
+	void** val = _val;
+	if(*val == NULL) return;
+	free(ef_list_hdr(*val));
+	*val = NULL;
 }
 
-void _ef_close(int* arg) {
-	close(*arg);
+void _ef_close(int* val) {
+	close(*val);
+	*val = -1;
 }
 
-void _ef_fclose(FILE** arg) {
-	fclose(*arg);
+void _ef_fclose(FILE** val) {
+	if(*val == NULL) return;
+	fclose(*val);
+	*val = NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
