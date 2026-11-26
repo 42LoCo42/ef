@@ -259,7 +259,7 @@ Examples:
 
 #define ef_free(val) _ef_free(&(val))
 #define ef_auto_free __attribute__((cleanup(_ef_free)))
-void _ef_free(void** val);
+void _ef_free(void* val);
 
 #define ef_list_free(val) _ef_list_free(&(val))
 #define ef_auto_list_free __attribute__((cleanup(_ef_list_free)))
@@ -606,7 +606,8 @@ static void printValidLogLevels(void) {
 
 #include <unistd.h>
 
-void _ef_free(void** val) {
+void _ef_free(void* _val) {
+	void** val = _val;
 	if(*val == NULL) return;
 	free(*val);
 	*val = 0;
