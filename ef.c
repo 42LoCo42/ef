@@ -20,8 +20,9 @@ Modules included in this version of ef:
 - Log-and-abort (ef_die, ef_diex)
 - Conditional breakpoints (ef_breakpoint)
 - Resource cleanup (ef_free, ef_auto_free, …)
-- Block defer (ef_defer, ef_defer_if)
+- Block defer (ef_defer)
 - Dynamic arrays (ef_list_new, …)
+- Hash maps (ef_map_new, …)
 
 This software is released into the public domain.
 For more information, see the end of this file.
@@ -70,11 +71,15 @@ to return either the first vararg or <default value>. */
 #define ef_pick(x, _) (x)
 #define ef_pick1(_, x) (x)
 
-/** Zero-initialisation helper */
-#define zalloc(x) calloc((x), 1)
-
 /** Block expression */
 #define ef_expr(...) __extension__({__VA_ARGS__})
+
+/** Zero-initialisation helper */
+#define ef_zalloc(x) ef_expr(  \
+	void* ptr = malloc(x);     \
+	if(ptr) memset(ptr, 0, x); \
+	ptr;                       \
+)
 
 /** Zero-size dummy var that triggers a cleanup function */
 #define ef_cleanup(f)                    \
@@ -89,8 +94,8 @@ ef_env returns the value of the requested environment variable if it is set to a
 non-empty string, otherwise it returns the optional second parameter or NULL.
 
 Examples:
-..char* user = ef_env("USER");
-..char* home = ef_env("HOME", "/homeless-shelter");
+  char* user = ef_env("USER");
+  char* home = ef_env("HOME", "/homeless-shelter");
 */
 
 #define ef_env(name, ...) _ef_env((name), ef_pick##__VA_OPT__(1)(NULL, __VA_ARGS__))
@@ -244,9 +249,10 @@ to an invalid value, like NULL for pointers or -1 for file descriptors.
 
 Currently implemented:
   - ef_free: for heap allocations
-  - ef_list_free: for ef_lists (allocated with ef_list_new)
+  - ef_list_free: for EF lists (allocated with ef_list_new)
+  - ef_map_free: for EF maps (allocated with ef_map_new)
   - ef_close: for kernel file descriptors (int)
-..- ef_fclose: for POSIX file objects (FILE*)
+  - ef_fclose: for POSIX file objects (FILE*)
 
 Examples:
   void* mem = malloc(1024);
@@ -266,6 +272,10 @@ void _ef_free(void* val);
 #define ef_list_free(val) _ef_list_free(&(val))
 #define ef_auto_list_free __attribute__((cleanup(_ef_list_free)))
 void _ef_list_free(void* val);
+
+#define ef_map_free(val) _ef_map_free(&(val))
+#define ef_auto_map_free __attribute__((cleanup(_ef_map_free)))
+void _ef_map_free(void* val);
 
 #define ef_close(val) _ef_close(&(val))
 #define ef_auto_close __attribute__((cleanup(_ef_close)))
@@ -368,6 +378,12 @@ The name of the iteration parameter is optional and defaults to 'i'.
 ef_list_lp(name), ef_list_pl(name): Pass length and pointer as arguments.
 lp passes length, then pointer.
 pl passes pointer, then length.
+
+EF_LIST_STATS: If this macro is defined, expose the statistics interface:
+  ef_list_reallocs(name): Return the number of reallocations done on this list.
+NOTE: This is an implementation macro which controls how EF is compiled.
+This means you must define it globally (add '-DEF_LIST_STATS' to your cflags).
+Furthermore, it will be automatically enabled in debug mode.
 */
 
 #ifndef EF_LIST_INIT
@@ -380,10 +396,18 @@ pl passes pointer, then length.
 #define ef_list_zero false
 #endif
 
+#if !defined(NDEBUG) && !defined(EF_LIST_STATS)
+#define EF_LIST_STATS
+#endif
+
 typedef struct {
 	size_t ets; // element type size
 	size_t cap;
 	size_t len;
+
+#ifdef EF_LIST_STATS
+	size_t reallocs;
+#endif
 } EF_List_Hdr;
 
 #define ef_list_bounds(...) ef_loc(_ef_list_bounds(__VA_ARGS__);)
@@ -393,6 +417,10 @@ EF_List_Hdr* ef_list_hdr(void* ptr);
 #define ef_list_ets(ptr) ef_list_hdr(ptr)->ets
 #define ef_list_cap(ptr) ef_list_hdr(ptr)->cap
 #define ef_list_len(ptr) ef_list_hdr(ptr)->len
+
+#ifdef EF_LIST_STATS
+size_t ef_list_reallocs(void* ptr);
+#endif
 
 #define ef_list_init(name)                                       \
 	name = ef_loc(                                               \
@@ -446,6 +474,130 @@ void* _ef_list_swp(void* ptr, size_t i);
 
 #define ef_list_lp(ptr) ef_list_len(ptr), (ptr)
 #define ef_list_pl(ptr) (ptr), ef_list_len(ptr)
+
+////////////////////////////////////////////////////////////////////////////////
+
+/** Hash maps
+ef_key_impl(type) { ef_key(it->key, it->keylen); }
+Implement default key extraction for a type (function 'ef_key_<type>').
+This needs to be done in order to make the type hashable.
+You will be given a 'type* it' of which you have to return the key
+using ef_key(<pointer to key data>, <length of key data>).
+
+EF_Key fooKey(Foo* it) { ef_key(it->key, it->keylen); }
+You can also define custom key extractors which you can use with ef_map_init.
+
+ef_map_new(type, name): Create a new hash map 'type* name'.
+It will use the default key extraction function for your type.
+
+ef_map_init(name, key): Initialize a hash map in the existing variable 'name'.
+Here, you can pass your custom key extraction function too.
+
+ef_map_get(name, ...): Query an element's address by key.
+Put whichever struct field initializers you need to set the key
+in one of your type's instances. The function will also set those values
+in the returned element if it did not previously exist in the list.
+All other fields will be zeroed out.
+
+EF_MAP_STATS: If this macro is defined, expose the statistics interface:
+  ef_map_collisions(name): Return the collision count.
+  ef_map_load(name): Return the number of unique items.
+  ef_map_load_factor(name): Return the load factor (load/slots).
+  ef_map_max_slot_len(name): Return the length of the biggest.
+NOTE: This is an implementation macro which controls how EF is compiled.
+This means you must define it globally (add '-DEF_MAP_STATS' to your cflags).
+Furthermore, it will be automatically enabled in debug mode.
+
+Implementation details:
+  - hash function: fnv1a (64 bit)
+  - slot count: 8192 (configurable by settting EF_MAP_INIT)
+  - no resizing/rehashing
+  - each slot is a dynamic array of colliding elements
+
+Example:
+  typedef struct {
+    char* key;
+    int value;
+  } Foo;
+
+  ef_key_impl(Foo) { ef_key(it->key, strlen(it->key)); }
+
+  ef_map_new(Foo, map);
+  Foo* foo = ef_map_get(map, .key = "bla");
+  foo->value++;
+*/
+
+#ifndef EF_MAP_INIT
+#define EF_MAP_INIT (1 << 13)
+#endif
+
+#if !defined(NDEBUG) && !defined(EF_MAP_STATS)
+#define EF_MAP_STATS
+#endif
+
+u64 ef_fnv1a(const void* data, size_t len);
+
+typedef struct {
+	void*  ptr;
+	size_t len;
+} EF_Key;
+
+#define ef_key(ptr, len) return ((EF_Key) {(ptr), (len)})
+#define ef_key_impl(type) EF_Key ef_key_##type(type* it)
+
+typedef EF_Key (*EF_GetKey)(void*);
+
+typedef struct {
+	size_t    ets;
+	EF_GetKey key;
+	void**    ptr;
+
+#ifdef EF_MAP_STATS
+	size_t collisions;
+	size_t load;
+	size_t max_slot_len;
+#endif
+} EF_Map;
+
+#define ef_map_ptr(map) _ef_map_ptr((EF_Map*) (map))
+void** _ef_map_ptr(EF_Map* map);
+
+#ifdef EF_MAP_STATS
+#define ef_map_collisions(map) _ef_map_collisions((EF_Map*) map)
+size_t _ef_map_collisions(EF_Map* map);
+
+#define ef_map_load(map) _ef_map_load((EF_Map*) map)
+size_t _ef_map_load(EF_Map* map);
+
+#define ef_map_load_factor(map) _ef_map_load_factor((EF_Map*) map)
+double _ef_map_load_factor(EF_Map* map);
+
+#define ef_map_max_slot_len(map) _ef_map_max_slot_len((EF_Map*) map)
+size_t _ef_map_max_slot_len(EF_Map* map);
+#endif
+
+#define ef_map_init(name, key)                 \
+	name = ef_loc(                             \
+		(void*) _ef_map_new(                   \
+			sizeof(*name),                     \
+			__extension__(                     \
+				(EF_Key (*)(void*))(void*) key \
+			),                                 \
+			EF_MAP_INIT                        \
+		);                                     \
+	)
+
+#define ef_map_new(type, name) type* ef_map_init(name, ef_key_##type)
+EF_Map* _ef_map_new(size_t ets, EF_Key (*key)(void*), size_t slots);
+
+#define ef_map_get(ptr, ...) ef_loc(         \
+	typeof(*(ptr)) init = {__VA_ARGS__};     \
+	typeof(ptr)    el =                      \
+		_ef_map_get((EF_Map*) (ptr), &init); \
+	if(*((u8*) el) == 0)(*el) = init;        \
+	el;                                      \
+)
+void* _ef_map_get(EF_Map* map, void* needle);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -628,6 +780,20 @@ void _ef_list_free(void* _val) {
 	*val = NULL;
 }
 
+void _ef_map_free(void* _val) {
+	EF_Map** val = _val;
+	if(*val == NULL) return;
+
+	ef_list_for((*val)->ptr) {
+		_ef_list_free(&(*val)->ptr[i]);
+	}
+
+	_ef_list_free(&(*val)->ptr);
+
+	free(*val);
+	*val = 0;
+}
+
 void _ef_close(int* val) {
 	close(*val);
 	*val = -1;
@@ -649,6 +815,8 @@ void ef_call_defer(void (^*blk)(void)) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+#include <sys/param.h>
+
 static u8 ef_list_buf[1 << 30];
 
 void _ef_list_bounds(size_t i, size_t len) {
@@ -659,11 +827,17 @@ EF_List_Hdr* ef_list_hdr(void* ptr) {
 	return &((EF_List_Hdr*) (ptr))[-1];
 }
 
+#ifdef EF_LIST_STATS
+size_t ef_list_reallocs(void* ptr) {
+	return ef_list_hdr(ptr)->reallocs;
+}
+#endif
+
 void* _ef_list_new(size_t ets, size_t cap, bool zero) {
 	size_t off  = sizeof(EF_List_Hdr);
 	size_t size = off + ets * cap;
 
-	void* base = zero ? zalloc(size) : malloc(size);
+	void* base = zero ? ef_zalloc(size) : malloc(size);
 	if(!base) ef_die("allocation of cap %zu (%zu bytes)failed", cap, size);
 
 	EF_List_Hdr* hdr = base;
@@ -677,6 +851,10 @@ void* _ef_list_new(size_t ets, size_t cap, bool zero) {
 void _ef_list_grow(void** ptr, bool zero) {
 	EF_List_Hdr* hdr = ef_list_hdr(*ptr);
 	if(hdr->len <= hdr->cap) return;
+
+#ifdef EF_LIST_STATS
+	hdr->reallocs++;
+#endif
 
 	size_t ets = hdr->ets;
 
@@ -758,6 +936,91 @@ void* _ef_list_swp(void* ptr, size_t i) {
 	memcpy(dst, src, ets);
 
 	return ef_list_buf;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+u64 ef_fnv1a(const void* data, size_t len) {
+	u64 hash = 0xcbf29ce484222325;
+
+	for(size_t i = 0; i < len; i++) {
+		hash ^= ((u8*) data)[i];
+		hash *= 0x100000001b3;
+	}
+
+	return hash;
+}
+
+void** _ef_map_ptr(EF_Map* map) {
+	return map->ptr;
+}
+
+#ifdef EF_MAP_STATS
+size_t _ef_map_collisions(EF_Map* map) {
+	return map->collisions;
+}
+
+size_t _ef_map_load(EF_Map* map) {
+	return map->load;
+}
+
+double _ef_map_load_factor(EF_Map* map) {
+	return (double) map->load / ef_list_len(map->ptr);
+}
+
+size_t _ef_map_max_slot_len(EF_Map* map) {
+	return map->max_slot_len;
+}
+#endif
+
+EF_Map*
+_ef_map_new(size_t ets, EF_Key (*key)(void*), size_t slots) {
+	EF_Map* map = calloc(1, sizeof(*map));
+	if(!map) ef_die("failed to allocate map");
+
+	map->ets = ets;
+	map->key = key;
+	map->ptr = _ef_list_new(ets, slots, true);
+
+	ef_list_len(map->ptr) = slots;
+
+	return map;
+}
+
+void* _ef_map_get(EF_Map* map, void* needle) {
+	EF_Key want = map->key(needle);
+	u64    hash = ef_fnv1a(want.ptr, want.len) % ef_list_len(map->ptr);
+
+	void* slot = map->ptr[hash];
+	if(!slot) slot = _ef_list_new(map->ets, EF_LIST_INIT, true);
+
+	void* result = NULL;
+
+	ef_list_for(slot) {
+		void*  item = (u8*) slot + map->ets * i;
+		EF_Key have = map->key(item);
+
+		if(have.len == want.len &&
+		   memcmp(have.ptr, want.ptr, have.len) == 0) {
+			result = item;
+			break;
+		}
+	}
+
+	if(!result) {
+#ifdef EF_MAP_STATS
+		size_t len = ef_list_len(slot);
+		if(len > 0) map->collisions++;
+		map->load++;
+		map->max_slot_len = MAX(map->max_slot_len, len + 1);
+#endif
+
+		result = _ef_list_put(&slot);
+		memset(result, 0, map->ets);
+	}
+
+	map->ptr[hash] = slot;
+	return result;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

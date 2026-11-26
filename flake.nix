@@ -46,6 +46,7 @@
 
         devShells.default = pkgs.mkShell {
           inputsFrom = builtins.attrValues packages;
+
           packages = with pkgs; [
             (pkgs.writeShellScriptBin "clang" ''
               exec "${lib.getExe clang}" "$@"
@@ -53,9 +54,16 @@
 
             clang-tools
             gdb
+            hyperfine
             just
             valgrind
           ];
+
+          shellHook = ''
+            if [ ! -f t8.shakespeare.txt ]; then
+              curl -LO https://ocw.mit.edu/ans7870/6/6.006/s08/lecturenotes/files/t8.shakespeare.txt
+            fi
+          '';
         };
       });
 }
