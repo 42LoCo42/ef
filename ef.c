@@ -321,6 +321,10 @@ ef_list_new(type, name): Create a new list 'type* name'
 Its initial capacity will be EF_LIST_INIT, by default 256.
 If you define EF_LIST_ZERO, it will also be zero-initialised.
 
+ef_list_init(name): Initialize a list in the existing variable 'name'.
+Works like ef_list_new and is useful for when the variable is e.g.
+a struct field or an item of another collection.
+
 ef_list_grow(name): Double the list's capacity until it fits the length.
 As with list creation, if EF_LIST_ZERO is defined,
 the newly allocated region will be zero-initialised.
@@ -388,10 +392,12 @@ EF_List_Hdr* ef_list_hdr(void* ptr);
 #define ef_list_cap(ptr) ef_list_hdr(ptr)->cap
 #define ef_list_len(ptr) ef_list_hdr(ptr)->len
 
-#define ef_list_new(type, name)                                 \
-	type* name = ef_loc(                                        \
-		_ef_list_new(sizeof(type), EF_LIST_INIT, ef_list_zero); \
+#define ef_list_init(name)                                       \
+	name = ef_loc(                                               \
+		_ef_list_new(sizeof(*name), EF_LIST_INIT, ef_list_zero); \
 	)
+
+#define ef_list_new(type, name) type* ef_list_init(name)
 void* _ef_list_new(size_t ets, size_t cap, bool zero);
 
 #define ef_list_grow(ptr) ef_loc(                 \
