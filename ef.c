@@ -163,7 +163,9 @@ typedef enum {
 #define ef_warn(...) ef_log(EF_LL_WARN, __VA_ARGS__)
 #define ef_fail(...) ef_log(EF_LL_FAIL, __VA_ARGS__)
 
-void _ef_log(EF_LogLevel level, EF_Loc loc, const char* fmt, ...);
+__attribute__((format(printf, 3, 4))) void _ef_log(
+	EF_LogLevel level, EF_Loc loc, const char* fmt, ...
+);
 
 ////////////////////////////////////////////////////////////////////////////////
 
