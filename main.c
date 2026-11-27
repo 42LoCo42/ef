@@ -1,7 +1,5 @@
 #define _POSIX_C_SOURCE 199309L
 
-#define EF_LIST_INIT 1
-#define EF_LIST_ZERO
 #include "ef.c"
 
 #include <fcntl.h>

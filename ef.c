@@ -843,10 +843,10 @@ void* _ef_list_new(size_t ets, size_t cap, bool zero) {
 	void* base = zero ? ef_zalloc(size) : malloc(size);
 	if(!base) ef_die("allocation of cap %zu (%zu bytes)failed", cap, size);
 
-	EF_List_Hdr* hdr = base;
-	hdr->ets         = ets;
-	hdr->cap         = cap;
-	hdr->len         = 0;
+	*((EF_List_Hdr*) base) = (EF_List_Hdr) {
+		.ets = ets,
+		.cap = cap,
+	};
 
 	return (u8*) base + off;
 }
