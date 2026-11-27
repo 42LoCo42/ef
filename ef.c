@@ -94,8 +94,8 @@ ef_env returns the value of the requested environment variable if it is set to a
 non-empty string, otherwise it returns the optional second parameter or NULL.
 
 Examples:
-  char* user = ef_env("USER");
-  char* home = ef_env("HOME", "/homeless-shelter");
+	char* user = ef_env("USER");
+	char* home = ef_env("HOME", "/homeless-shelter");
 */
 
 #define ef_env(name, ...) _ef_env((name), ef_pick##__VA_OPT__(1)(NULL, __VA_ARGS__))
@@ -124,8 +124,8 @@ The timestamp can be changed by setting the environment variable EF_LOG_TS
 to a valid format string as defined by strftime(3).
 
 Examples:
-  ef_info("the answer is %d", 6 * 7);
-  ef_log(EF_LL_FAIL, "oh no!");
+	ef_info("the answer is %d", 6 * 7);
+	ef_log(EF_LL_FAIL, "oh no!");
 */
 
 #include <stddef.h>
@@ -180,12 +180,12 @@ ef_die additionally appends the message and symbol corresponding to
 the current errno.
 
 Examples:
-  // appends current errno, e.g. "No such file or directory (ENOENT)"
-  int fd = open("foo", O_RDONLY);
-  if(fd < 0) ef_die("failed to open foo");
+	// appends current errno, e.g. "No such file or directory (ENOENT)"
+	int fd = open("foo", O_RDONLY);
+	if(fd < 0) ef_die("failed to open foo");
 
-  // doesn't append current error
-  if(!someCondition()) ef_diex("something bad happened");
+	// doesn't append current error
+	if(!someCondition()) ef_diex("something bad happened");
 */
 
 #include <errno.h>
@@ -248,19 +248,19 @@ They deinitialize their respective resource and set the variable
 to an invalid value, like NULL for pointers or -1 for file descriptors.
 
 Currently implemented:
-  - ef_free: for heap allocations
-  - ef_list_free: for EF lists (allocated with ef_list_new)
-  - ef_map_free: for EF maps (allocated with ef_map_new)
-  - ef_close: for kernel file descriptors (int)
-  - ef_fclose: for POSIX file objects (FILE*)
+- ef_free: for heap allocations
+- ef_list_free: for EF lists (allocated with ef_list_new)
+- ef_map_free: for EF maps (allocated with ef_map_new)
+- ef_close: for kernel file descriptors (int)
+- ef_fclose: for POSIX file objects (FILE*)
 
 Examples:
-  void* mem = malloc(1024);
-  ef_free(mem);
-  // mem was freed & is now NULL
+	void* mem = malloc(1024);
+	ef_free(mem);
+	// mem was freed & is now NULL
 
-  ef_auto_free void* mem = malloc(1024);
-  // mem will be freed at scope exit
+	ef_auto_free void* mem = malloc(1024);
+	// mem will be freed at scope exit
 */
 
 #include <stdio.h>
@@ -297,9 +297,9 @@ When compiling with clang, this module requires the compiler flags
 Alternatively, define EF_NO_DEFER if you don't want to use defer.
 
 Examples:
-  ef_defer {
-    ef_info("hi from defer!");
-  };
+	ef_defer {
+		ef_info("hi from defer!");
+	};
 */
 
 #ifndef EF_NO_DEFER
@@ -375,12 +375,11 @@ Returns the value of the previous i'th element.
 ef_list_for(name, i?) { body... }: Iterate over a list.
 The name of the iteration parameter is optional and defaults to 'i'.
 
-ef_list_lp(name), ef_list_pl(name): Pass length and pointer as arguments.
-lp passes length, then pointer.
-pl passes pointer, then length.
+ef_list_lp(name): Pass length and pointer as arguments.
+ef_list_pl(name): Pass pointer and length as arguments.
 
 EF_LIST_STATS: If this macro is defined, expose the statistics interface:
-  ef_list_reallocs(name): Return the number of reallocations done on this list.
+	ef_list_reallocs(name): Return the number of reallocations done on this list.
 NOTE: This is an implementation macro which controls how EF is compiled.
 This means you must define it globally (add '-DEF_LIST_STATS' to your cflags).
 Furthermore, it will be automatically enabled in debug mode.
@@ -494,37 +493,41 @@ ef_map_init(name, key): Initialize a hash map in the existing variable 'name'.
 Here, you can pass your custom key extraction function too.
 
 ef_map_get(name, ...): Query an element's address by key.
-Put whichever struct field initializers you need to set the key
-in one of your type's instances. The function will also set those values
-in the returned element if it did not previously exist in the list.
-All other fields will be zeroed out.
+The varargs are struct initializers for an object of your map's type.
+This object serves both as the key holder (it will be passed to the map's
+key extraction function, so you must at least initialize a valid key)
+and as the default value for new map elements (with other fields zeroed).
+In particular, this means that you *don't* have to manually set the key
+on newly inserted elements *and* have control over their initial values.
 
 EF_MAP_STATS: If this macro is defined, expose the statistics interface:
-  ef_map_collisions(name): Return the collision count.
-  ef_map_load(name): Return the number of unique items.
-  ef_map_load_factor(name): Return the load factor (load/slots).
-  ef_map_max_slot_len(name): Return the length of the biggest.
+	ef_map_collisions(name): Return the collision count.
+	ef_map_load(name): Return the number of unique items.
+	ef_map_load_factor(name): Return the load factor (load/slots).
+	ef_map_max_slot_len(name): Return the length of the biggest.
 NOTE: This is an implementation macro which controls how EF is compiled.
 This means you must define it globally (add '-DEF_MAP_STATS' to your cflags).
 Furthermore, it will be automatically enabled in debug mode.
 
 Implementation details:
-  - hash function: fnv1a (64 bit)
-  - slot count: 8192 (configurable by settting EF_MAP_INIT)
-  - no resizing/rehashing
-  - each slot is a dynamic array of colliding elements
+- hash function: fnv1a (64 bit)
+- slot count: 8192 (configurable by settting EF_MAP_INIT)
+- no resizing/rehashing
+- each slot is a dynamic array of colliding elements
 
 Example:
-  typedef struct {
-    char* key;
-    int value;
-  } Foo;
+	typedef struct {
+		i64 key;
+		char* value;
+	} Foo;
 
-  ef_key_impl(Foo) { ef_key(it->key, strlen(it->key)); }
+	ef_key_impl(Foo) {
+		ef_key(&it->key, sizeof(it->key));
+	}
 
-  ef_map_new(Foo, map);
-  Foo* foo = ef_map_get(map, .key = "bla");
-  foo->value++;
+	ef_map_new(Foo, map);
+	Foo* foo = ef_map_get(map, .key = 42, .value = "initial");
+	ef_info("foo's value is '%s'", foo->value);
 */
 
 #ifndef EF_MAP_INIT
