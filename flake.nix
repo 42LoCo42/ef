@@ -60,6 +60,10 @@
           ];
 
           shellHook = ''
+            # don't fortify in debug builds
+            NIX_HARDENING_ENABLE=''${NIX_HARDENING_ENABLE/fortify/}
+            NIX_HARDENING_ENABLE=''${NIX_HARDENING_ENABLE/fortify3/}
+
             if [ ! -f t8.shakespeare.txt ]; then
               curl -LO https://ocw.mit.edu/ans7870/6/6.006/s08/lecturenotes/files/t8.shakespeare.txt
             fi

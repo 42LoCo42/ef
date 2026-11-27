@@ -633,6 +633,8 @@ static void __attribute__((constructor)) init(void) {
 
 	////////////////////////////////////////
 
+	logTimeFmt = ef_env("EF_LOG_TS", "%F %T");
+
 	const char* logLevelS = ef_env("EF_LOG");
 	if(logLevelS != NULL) {
 #define X(x, _)                               \
@@ -658,8 +660,6 @@ static void __attribute__((constructor)) init(void) {
 		}
 #undef X
 	}
-
-	logTimeFmt = ef_env("EF_LOG_TS", "%F %T");
 
 	////////////////////////////////////////
 
